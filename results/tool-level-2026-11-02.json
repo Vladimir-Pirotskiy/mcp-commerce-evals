@@ -1,7 +1,7 @@
 {
   "store_url": "http://127.0.0.1:8787/mcp",
   "queries_file": "evals/queries.json",
-  "unix_time": 1793635195,
+  "unix_time": 1793640586,
   "tool_level": {
     "overall": {
       "n": 40,
@@ -9,9 +9,9 @@
       "hit_at_5": 0.925,
       "mrr": 0.913888888888889,
       "errors": 0,
-      "latency_p50_ms": 0.236625,
-      "latency_p95_ms": 0.404709,
-      "latency_mean_ms": 0.267294825
+      "latency_p50_ms": 0.242083,
+      "latency_p95_ms": 0.380083,
+      "latency_mean_ms": 0.25702917500000005
     },
     "by_kind": {
       "compatibility": {
@@ -20,9 +20,9 @@
         "hit_at_5": 0.875,
         "mrr": 0.8888888888888888,
         "errors": 0,
-        "latency_p50_ms": 0.22075,
-        "latency_p95_ms": 0.33337500000000003,
-        "latency_mean_ms": 0.245255125
+        "latency_p50_ms": 0.219708,
+        "latency_p95_ms": 0.360959,
+        "latency_mean_ms": 0.238390875
       },
       "exact_part_number": {
         "n": 6,
@@ -30,9 +30,9 @@
         "hit_at_5": 0.8333333333333334,
         "mrr": 0.8518518518518517,
         "errors": 0,
-        "latency_p50_ms": 0.195625,
-        "latency_p95_ms": 0.404709,
-        "latency_mean_ms": 0.26777116666666667
+        "latency_p50_ms": 0.26416599999999996,
+        "latency_p95_ms": 0.614375,
+        "latency_mean_ms": 0.33785383333333335
       },
       "filter": {
         "n": 6,
@@ -40,9 +40,9 @@
         "hit_at_5": 0.8333333333333334,
         "mrr": 0.8333333333333334,
         "errors": 0,
-        "latency_p50_ms": 0.193208,
-        "latency_p95_ms": 0.446459,
-        "latency_mean_ms": 0.23918766666666666
+        "latency_p50_ms": 0.15695800000000001,
+        "latency_p95_ms": 0.187333,
+        "latency_mean_ms": 0.16262516666666665
       },
       "plain_description": {
         "n": 8,
@@ -50,9 +50,9 @@
         "hit_at_5": 1.0,
         "mrr": 0.9166666666666666,
         "errors": 0,
-        "latency_p50_ms": 0.23466700000000001,
-        "latency_p95_ms": 0.379125,
-        "latency_mean_ms": 0.26031762500000005
+        "latency_p50_ms": 0.240583,
+        "latency_p95_ms": 0.314791,
+        "latency_mean_ms": 0.242953125
       },
       "synonym": {
         "n": 6,
@@ -60,9 +60,9 @@
         "hit_at_5": 1.0,
         "mrr": 1.0,
         "errors": 0,
-        "latency_p50_ms": 0.28412499999999996,
-        "latency_p95_ms": 0.313125,
-        "latency_mean_ms": 0.27697216666666663
+        "latency_p50_ms": 0.251375,
+        "latency_p95_ms": 0.283,
+        "latency_mean_ms": 0.25125
       },
       "typo": {
         "n": 6,
@@ -70,9 +70,9 @@
         "hit_at_5": 1.0,
         "mrr": 1.0,
         "errors": 0,
-        "latency_p50_ms": 0.287833,
-        "latency_p95_ms": 0.41225,
-        "latency_mean_ms": 0.3239375
+        "latency_p50_ms": 0.30520800000000003,
+        "latency_p95_ms": 0.380083,
+        "latency_mean_ms": 0.3200068333333333
       }
     },
     "queries": [
@@ -96,7 +96,7 @@
           "BRK-CH-2510"
         ],
         "rank": 1,
-        "latency_ms": 0.332209,
+        "latency_ms": 0.400958,
         "error": null
       },
       {
@@ -119,7 +119,7 @@
           "FER-CS-8488"
         ],
         "rank": 1,
-        "latency_ms": 0.176917,
+        "latency_ms": 0.29125,
         "error": null
       },
       {
@@ -133,7 +133,7 @@
           "DUN-RT-8582"
         ],
         "rank": 1,
-        "latency_ms": 0.139834,
+        "latency_ms": 0.239291,
         "error": null
       },
       {
@@ -156,7 +156,7 @@
           "QUI-SD-5374"
         ],
         "rank": 1,
-        "latency_ms": 0.357333,
+        "latency_ms": 0.614375,
         "error": null
       },
       {
@@ -179,7 +179,7 @@
           "ALD-GR-1443"
         ],
         "rank": 1,
-        "latency_ms": 0.195625,
+        "latency_ms": 0.26416599999999996,
         "error": null
       },
       {
@@ -202,7 +202,7 @@
           "PEL-HT-5482"
         ],
         "rank": 9,
-        "latency_ms": 0.404709,
+        "latency_ms": 0.217083,
         "error": null
       },
       {
@@ -225,7 +225,7 @@
           "PEL-SD-2723"
         ],
         "rank": 1,
-        "latency_ms": 0.291667,
+        "latency_ms": 0.240583,
         "error": null
       },
       {
@@ -249,7 +249,7 @@
           "PEL-HT-4650"
         ],
         "rank": 1,
-        "latency_ms": 0.235541,
+        "latency_ms": 0.26066700000000004,
         "error": null
       },
       {
@@ -272,7 +272,7 @@
           "ALD-GR-1443"
         ],
         "rank": 1,
-        "latency_ms": 0.18912500000000002,
+        "latency_ms": 0.213084,
         "error": null
       },
       {
@@ -296,7 +296,7 @@
           "DUN-LU-6630"
         ],
         "rank": 1,
-        "latency_ms": 0.217583,
+        "latency_ms": 0.209375,
         "error": null
       },
       {
@@ -321,7 +321,7 @@
           "OAK-PD-5131"
         ],
         "rank": 1,
-        "latency_ms": 0.23466700000000001,
+        "latency_ms": 0.216,
         "error": null
       },
       {
@@ -347,7 +347,7 @@
           "GLE-RT-3481"
         ],
         "rank": 1,
-        "latency_ms": 0.379125,
+        "latency_ms": 0.314791,
         "error": null
       },
       {
@@ -372,7 +372,7 @@
           "NET-TR-4328"
         ],
         "rank": 1,
-        "latency_ms": 0.318,
+        "latency_ms": 0.242083,
         "error": null
       },
       {
@@ -395,7 +395,7 @@
           "STO-RD-9412"
         ],
         "rank": 3,
-        "latency_ms": 0.216833,
+        "latency_ms": 0.24704199999999998,
         "error": null
       },
       {
@@ -424,7 +424,7 @@
           "DUN-CS-6237"
         ],
         "rank": 1,
-        "latency_ms": 0.224041,
+        "latency_ms": 0.22249999999999998,
         "error": null
       },
       {
@@ -449,7 +449,7 @@
           "BRK-CS-1522"
         ],
         "rank": 1,
-        "latency_ms": 0.19495800000000002,
+        "latency_ms": 0.227125,
         "error": null
       },
       {
@@ -473,7 +473,7 @@
           "FER-BP-4602"
         ],
         "rank": 1,
-        "latency_ms": 0.212167,
+        "latency_ms": 0.211709,
         "error": null
       },
       {
@@ -501,7 +501,7 @@
           "GLE-TB-2958"
         ],
         "rank": 1,
-        "latency_ms": 0.219333,
+        "latency_ms": 0.19,
         "error": null
       },
       {
@@ -529,7 +529,7 @@
           "COR-AX-2116"
         ],
         "rank": 1,
-        "latency_ms": 0.32079199999999997,
+        "latency_ms": 0.27545899999999995,
         "error": null
       },
       {
@@ -563,7 +563,7 @@
           "DUN-RT-4450"
         ],
         "rank": 1,
-        "latency_ms": 0.22075,
+        "latency_ms": 0.199667,
         "error": null
       },
       {
@@ -587,7 +587,7 @@
           "ROO-CR-2371"
         ],
         "rank": 1,
-        "latency_ms": 0.236625,
+        "latency_ms": 0.219708,
         "error": null
       },
       {
@@ -626,7 +626,7 @@
           "GLE-HB-5923"
         ],
         "rank": 9,
-        "latency_ms": 0.33337500000000003,
+        "latency_ms": 0.360959,
         "error": null
       },
       {
@@ -651,7 +651,7 @@
           "FER-CS-5096"
         ],
         "rank": 1,
-        "latency_ms": 0.27475,
+        "latency_ms": 0.313625,
         "error": null
       },
       {
@@ -678,7 +678,7 @@
           "GLE-LU-9777"
         ],
         "rank": 1,
-        "latency_ms": 0.287833,
+        "latency_ms": 0.287,
         "error": null
       },
       {
@@ -706,7 +706,7 @@
           "FER-BP-1254"
         ],
         "rank": 1,
-        "latency_ms": 0.3585,
+        "latency_ms": 0.37225,
         "error": null
       },
       {
@@ -734,7 +734,7 @@
           "ALD-CH-6403"
         ],
         "rank": 1,
-        "latency_ms": 0.32320899999999997,
+        "latency_ms": 0.30520800000000003,
         "error": null
       },
       {
@@ -759,7 +759,7 @@
           "BRK-BC-3960"
         ],
         "rank": 1,
-        "latency_ms": 0.287083,
+        "latency_ms": 0.261875,
         "error": null
       },
       {
@@ -788,7 +788,7 @@
           "ROO-PD-9710"
         ],
         "rank": 1,
-        "latency_ms": 0.41225,
+        "latency_ms": 0.380083,
         "error": null
       },
       {
@@ -814,7 +814,7 @@
           "FER-TR-7555"
         ],
         "rank": 1,
-        "latency_ms": 0.292375,
+        "latency_ms": 0.24570899999999998,
         "error": null
       },
       {
@@ -837,7 +837,7 @@
           "DUN-CS-4950"
         ],
         "rank": 1,
-        "latency_ms": 0.28412499999999996,
+        "latency_ms": 0.266083,
         "error": null
       },
       {
@@ -862,7 +862,7 @@
           "COR-LT-8477"
         ],
         "rank": 1,
-        "latency_ms": 0.313125,
+        "latency_ms": 0.283,
         "error": null
       },
       {
@@ -891,7 +891,7 @@
           "DUN-LU-7540"
         ],
         "rank": 1,
-        "latency_ms": 0.29425,
+        "latency_ms": 0.266333,
         "error": null
       },
       {
@@ -920,7 +920,7 @@
           "IRO-AX-1880"
         ],
         "rank": 1,
-        "latency_ms": 0.21437499999999998,
+        "latency_ms": 0.195,
         "error": null
       },
       {
@@ -948,7 +948,7 @@
           "ALD-CH-6403"
         ],
         "rank": 1,
-        "latency_ms": 0.263583,
+        "latency_ms": 0.251375,
         "error": null
       },
       {
@@ -973,7 +973,7 @@
           "COR-LU-3403"
         ],
         "rank": null,
-        "latency_ms": 0.227292,
+        "latency_ms": 0.187333,
         "error": null
       },
       {
@@ -998,7 +998,7 @@
           "NET-CB-2172"
         ],
         "rank": 1,
-        "latency_ms": 0.205375,
+        "latency_ms": 0.166667,
         "error": null
       },
       {
@@ -1022,7 +1022,7 @@
           "OAK-SD-2343"
         ],
         "rank": 1,
-        "latency_ms": 0.446459,
+        "latency_ms": 0.163375,
         "error": null
       },
       {
@@ -1044,7 +1044,7 @@
           "OAK-TB-7156"
         ],
         "rank": 1,
-        "latency_ms": 0.181959,
+        "latency_ms": 0.15695800000000001,
         "error": null
       },
       {
@@ -1069,7 +1069,7 @@
           "FER-HB-5228"
         ],
         "rank": 1,
-        "latency_ms": 0.18083300000000002,
+        "latency_ms": 0.15595900000000001,
         "error": null
       },
       {
@@ -1086,7 +1086,7 @@
           "NET-TB-6565"
         ],
         "rank": 1,
-        "latency_ms": 0.193208,
+        "latency_ms": 0.14545899999999998,
         "error": null
       }
     ]

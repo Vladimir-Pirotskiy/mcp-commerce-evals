@@ -148,10 +148,10 @@ cargo build --release --workspace
 
 | kind | queries | hit@1 | hit@5 | MRR | p50 ms | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|
-| compatibility | 8 | 0.88 | 0.88 | 0.89 | 0.2 | 0.3 |
-| exact_part_number | 6 | 0.83 | 0.83 | 0.85 | 0.2 | 0.4 |
-| filter | 6 | 0.83 | 0.83 | 0.83 | 0.2 | 0.4 |
-| plain_description | 8 | 0.88 | 1.00 | 0.92 | 0.2 | 0.4 |
+| compatibility | 8 | 0.88 | 0.88 | 0.89 | 0.2 | 0.4 |
+| exact_part_number | 6 | 0.83 | 0.83 | 0.85 | 0.3 | 0.6 |
+| filter | 6 | 0.83 | 0.83 | 0.83 | 0.2 | 0.2 |
+| plain_description | 8 | 0.88 | 1.00 | 0.92 | 0.2 | 0.3 |
 | synonym | 6 | 1.00 | 1.00 | 1.00 | 0.3 | 0.3 |
 | typo | 6 | 1.00 | 1.00 | 1.00 | 0.3 | 0.4 |
 | **all** | 40 | 0.90 | 0.93 | 0.91 | 0.2 | 0.4 |
@@ -178,6 +178,14 @@ deterministic for a given seed; latency varies from run to run.
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+```
+
+`Cargo.lock` is committed and holds only crate versions published before 2026-10-19, at least two
+weeks before it was generated. Nightly cargo resolved it, for the lockfile only (the build uses
+1.99.0):
+
+```sh
+cargo +nightly generate-lockfile -Zunstable-options --publish-time 2026-10-19T00:00:00Z
 ```
 
 The tests need no network and no key. The integration test starts the store on a random port inside
