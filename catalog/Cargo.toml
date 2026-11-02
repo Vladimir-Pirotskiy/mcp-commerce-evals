@@ -1,0 +1,16 @@
+[package]
+name = "catalog"
+description = "Seeded demo catalog of fictional bicycle parts, with BM25 search and filters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+schemars = { workspace = true }
+serde = { workspace = true }
+
+[lints]
+workspace = true

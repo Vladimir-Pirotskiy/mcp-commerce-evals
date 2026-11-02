@@ -1,0 +1,23 @@
+[package]
+name = "mcp-commerce-evals"
+description = "Evaluate any MCP store: tool-level retrieval metrics and an optional assistant-level run"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }
+catalog = { workspace = true }
+reference-store = { workspace = true }
+
+[lints]
+workspace = true

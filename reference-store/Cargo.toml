@@ -1,0 +1,25 @@
+[package]
+name = "reference-store"
+description = "Reference MCP store (Streamable HTTP) over a seeded catalog of fictional bicycle parts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+axum = { workspace = true }
+catalog = { workspace = true }
+clap = { workspace = true }
+rmcp = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+
+[lints]
+workspace = true
