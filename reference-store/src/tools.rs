@@ -1,0 +1,179 @@
+//! The MCP server: four tools over the demo catalog.
+
+use std::sync::Arc;
+
+use catalog::{Catalog, SearchQuery};
+use rmcp::handler::server::router::tool::ToolRouter;
+use rmcp::handler::server::wrapper::{Json, Parameters};
+use rmcp::{ServerHandler, tool, tool_handler, tool_router};
+
+use crate::api::{
+    AvailabilityOutput, CartOutput, GetProductArgs, LinesArgs, PartSummary, ProductDetail,
+    SearchArgs, SearchOutput,
+};
+use crate::cart;
+
+const DEFAULT_LIMIT: u32 = 5;
+const MAX_LIMIT: u32 = 25;
+const MAX_QUERY_CHARS: usize = 200;
+const MAX_FITS: usize = 10;
+
+/// The store's MCP handler. Cheap to clone: the catalog is shared.
+#[derive(Clone)]
+pub struct ReferenceStore {
+    catalog: Arc<Catalog>,
+    checkout_base: Arc<str>,
+    tool_router: ToolRouter<Self>,
+}
+
+impl ReferenceStore {
+    /// A handler over `catalog`; carts point at `checkout_base`.
+    pub fn new(catalog: Arc<Catalog>, checkout_base: Arc<str>) -> Self {
+        Self {
+            catalog,
+            checkout_base,
+            tool_router: Self::tool_router(),
+        }
+    }
+}
+
+#[tool_router]
+impl ReferenceStore {
+    #[tool(
+        description = "Find bicycle parts. Use this first, whenever the buyer names a part, a \
+                       part number, a need or a bike. Takes free text (typos, synonyms and \
+                       part numbers work) plus optional filters: brand, category, fits (such \
+                       as 11-speed, road, disc-brake, 29in), in_stock_only and max_price_usd. \
+                       Returns up to `limit` ranked results with id, title, brand, price, \
+                       stock status and what each part fits. Search results show stock status \
+                       but not quantities; call check_availability before promising a \
+                       quantity.",
+        annotations(
+            title = "Search products",
+            read_only_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn search_products(
+        &self,
+        Parameters(args): Parameters<SearchArgs>,
+    ) -> Result<Json<SearchOutput>, String> {
+        let text = args.query.unwrap_or_default();
+        if text.chars().count() > MAX_QUERY_CHARS {
+            return Err(format!(
+                "query is longer than {MAX_QUERY_CHARS} characters."
+            ));
+        }
+        let fits = args.fits.unwrap_or_default();
+        if fits.len() > MAX_FITS {
+            return Err(format!("fits takes at most {MAX_FITS} requirements."));
+        }
+        let query = SearchQuery {
+            text,
+            brand: args.brand,
+            category: args.category,
+            fits,
+            in_stock_only: args.in_stock_only.unwrap_or(false),
+            max_price_usd: args.max_price_usd,
+            limit: args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize,
+        };
+        let found = self.catalog.search(&query);
+        let suggestion = found.hits.is_empty().then(|| {
+            "No part matched. Try fewer or simpler words, remove a filter, or search by category \
+             with an empty query."
+                .to_owned()
+        });
+        Ok(Json(SearchOutput {
+            total_matches: found.total,
+            results: found
+                .hits
+                .iter()
+                .map(|h| PartSummary::from(h.part))
+                .collect(),
+            suggestion,
+        }))
+    }
+
+    #[tool(
+        description = "Get everything the store knows about one part: description, technical \
+                       attributes (speed, wheel size, brake type, axle standard and so on), \
+                       compatibility list, price, stock status, units on the shelf and restock \
+                       days. Use it to compare two or three candidates from search_products or \
+                       to confirm that a part fits the buyer's bike before recommending it.",
+        annotations(
+            title = "Get product detail",
+            read_only_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn get_product(
+        &self,
+        Parameters(args): Parameters<GetProductArgs>,
+    ) -> Result<Json<ProductDetail>, String> {
+        match self.catalog.get(&args.id) {
+            Some(part) => Ok(Json(ProductDetail { part: part.clone() })),
+            None => Err(format!(
+                "No part has the id '{}'. Copy ids from search_products results.",
+                args.id
+            )),
+        }
+    }
+
+    #[tool(
+        description = "Check whether specific quantities can ship now. Send one to twenty \
+                       {id, quantity} items. For each item the answer is available (all on the \
+                       shelf), partial (fewer on the shelf than requested), backorder (ships \
+                       after restock_days), unavailable (out of stock, no date) or unknown_part. \
+                       Call this before create_cart and tell the buyer about any item that is \
+                       not available. Changes nothing.",
+        annotations(
+            title = "Check availability",
+            read_only_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn check_availability(
+        &self,
+        Parameters(args): Parameters<LinesArgs>,
+    ) -> Result<Json<AvailabilityOutput>, String> {
+        cart::validate(&args.items).map_err(|r| r.0)?;
+        Ok(Json(AvailabilityOutput {
+            items: cart::check(&self.catalog, &args.items),
+        }))
+    }
+
+    #[tool(
+        description = "Create a cart and get a checkout link for the buyer. Use it only after \
+                       the buyer has chosen the parts and quantities. Takes one to twenty \
+                       {id, quantity} items and returns checkout_url, lines and the subtotal. \
+                       The buyer opens checkout_url, reviews the cart and pays there: you never \
+                       pay and cannot. Refuses unknown parts, out-of-stock parts and quantities \
+                       above the shelf; backordered parts are accepted and flagged.",
+        annotations(
+            title = "Create cart",
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    fn create_cart(
+        &self,
+        Parameters(args): Parameters<LinesArgs>,
+    ) -> Result<Json<CartOutput>, String> {
+        cart::build_cart(&self.catalog, &args.items, &self.checkout_base)
+            .map(Json)
+            .map_err(|r| r.0)
+    }
+}
+
+#[tool_handler(
+    router = self.tool_router,
+    name = "reference-store",
+    instructions = "Demo bicycle-parts store with invented brands and a synthetic catalog. \
+        Typical flow: search_products to find candidates, get_product for detail when choosing \
+        between them, check_availability for the quantity the buyer wants, then create_cart and \
+        hand the checkout_url to the buyer. The buyer pays on that page; no tool takes payment. \
+        Do not guess part numbers: copy them from search results."
+)]
+impl ServerHandler for ReferenceStore {}
