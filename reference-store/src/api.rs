@@ -1,12 +1,18 @@
 //! Input and output types of the MCP tools. The doc comments become the JSON Schema
 //! descriptions that an assistant reads when it decides how to fill in a call.
+//!
+//! Every type drops the formats schemars invents for Rust numbers (`uint32`, `double`): JSON
+//! Schema does not define them and a client that validates the schema warns on each one. Unsigned
+//! fields keep `minimum: 0`.
 
 use catalog::{Category, Part, StockStatus};
 use schemars::JsonSchema;
+use schemars::transform::RestrictFormats;
 use serde::{Deserialize, Serialize};
 
 /// Arguments of `search_products`.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct SearchArgs {
     /// What the buyer is looking for, in their own words: a part number such as
     /// `ALD-CH-1002`, a product type ("11-speed chain"), a need ("brake pads for disc brakes")
@@ -30,6 +36,7 @@ pub struct SearchArgs {
 
 /// One search result: enough to choose between parts without opening each one.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct PartSummary {
     /// Part number; pass it to `get_product`, `check_availability` or `create_cart`.
     pub id: String,
@@ -63,6 +70,7 @@ impl From<&Part> for PartSummary {
 
 /// Result of `search_products`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct SearchOutput {
     /// How many parts matched in total, before the limit.
     pub total_matches: usize,
@@ -74,6 +82,7 @@ pub struct SearchOutput {
 
 /// Arguments of `get_product`.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct GetProductArgs {
     /// Part number as returned by `search_products`. Case and dashes do not matter.
     pub id: String,
@@ -81,6 +90,7 @@ pub struct GetProductArgs {
 
 /// Full detail of one part.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct ProductDetail {
     /// Everything the store knows about the part.
     #[serde(flatten)]
@@ -89,6 +99,7 @@ pub struct ProductDetail {
 
 /// A part number and how many the buyer wants.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct LineRequest {
     /// Part number as returned by `search_products`.
     pub id: String,
@@ -98,6 +109,7 @@ pub struct LineRequest {
 
 /// Arguments of `check_availability` and `create_cart`.
 #[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct LinesArgs {
     /// One to twenty parts with quantities.
     pub items: Vec<LineRequest>,
@@ -105,6 +117,7 @@ pub struct LinesArgs {
 
 /// Whether a requested quantity can be had.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 #[serde(rename_all = "snake_case")]
 pub enum Availability {
     /// The whole quantity ships from the shelf now.
@@ -121,6 +134,7 @@ pub enum Availability {
 
 /// Availability of one requested line.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct LineAvailability {
     /// The part number as the buyer gave it.
     pub id: String,
@@ -140,6 +154,7 @@ pub struct LineAvailability {
 
 /// Result of `check_availability`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct AvailabilityOutput {
     /// One entry per requested line, in request order.
     pub items: Vec<LineAvailability>,
@@ -147,6 +162,7 @@ pub struct AvailabilityOutput {
 
 /// One line of a created cart.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct CartLine {
     /// Part number.
     pub id: String,
@@ -166,6 +182,7 @@ pub struct CartLine {
 
 /// Result of `create_cart`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[schemars(transform = RestrictFormats::default())]
 pub struct CartOutput {
     /// Identifier of the cart; the same items always give the same identifier.
     pub cart_id: String,

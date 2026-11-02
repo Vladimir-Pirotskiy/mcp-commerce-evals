@@ -134,6 +134,13 @@ but the request shape comes from the API documentation, not from a live call, an
 checked that the API accepts the `$schema` field the store's input schemas carry. No assistant-level
 numbers are published here for that reason.
 
+The store itself was checked with a real MCP client on 2026-11-03: Claude Code (`claude -p`, Haiku,
+the store as its only server through `--mcp-config`) was asked for "an 11-speed chain that is in
+stock and under 30 dollars" and a cart. It searched, checked stock and returned a cart with
+`FER-CH-4296` at $24.99, an expected answer, in 5 turns. That run found that the client warned on
+every `uint32` and `double` format schemars writes for Rust numbers; the store now drops them
+(`schemas_use_only_standard_formats` in `reference-store/tests/http.rs`).
+
 ## Results
 
 Tool-level run on 2026-11-02, release build, store and CLI on the same machine (Apple M4 Max,

@@ -98,6 +98,76 @@ async fn every_tool_has_schemas_and_a_description() {
     }
 }
 
+/// Formats a JSON Schema validator knows (draft 2020-12). Schemars adds its own (`uint32`,
+/// `double`) for Rust number types, and an MCP client that validates the schema warns on each one.
+const STANDARD_FORMATS: &[&str] = &[
+    "date-time",
+    "date",
+    "time",
+    "duration",
+    "email",
+    "idn-email",
+    "hostname",
+    "idn-hostname",
+    "ipv4",
+    "ipv6",
+    "uri",
+    "uri-reference",
+    "iri",
+    "iri-reference",
+    "uuid",
+    "uri-template",
+    "json-pointer",
+    "relative-json-pointer",
+    "regex",
+];
+
+fn non_standard_formats(schema: &Value, path: &str, found: &mut Vec<String>) {
+    match schema {
+        Value::Object(map) => {
+            if let Some(Value::String(format)) = map.get("format")
+                && !STANDARD_FORMATS.contains(&format.as_str())
+            {
+                found.push(format!("{path}: {format}"));
+            }
+            for (key, value) in map {
+                non_standard_formats(value, &format!("{path}/{key}"), found);
+            }
+        }
+        Value::Array(items) => {
+            for (i, value) in items.iter().enumerate() {
+                non_standard_formats(value, &format!("{path}/{i}"), found);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[tokio::test]
+async fn schemas_use_only_standard_formats() {
+    let store = start(StoreConfig::default()).await;
+    let listed: Value = store
+        .rpc("tools/list", json!({}))
+        .await
+        .json()
+        .await
+        .unwrap();
+    let mut found = Vec::new();
+    for tool in listed["result"]["tools"].as_array().unwrap() {
+        let name = tool["name"].as_str().unwrap();
+        non_standard_formats(&tool["inputSchema"], &format!("{name}/input"), &mut found);
+        non_standard_formats(&tool["outputSchema"], &format!("{name}/output"), &mut found);
+    }
+    assert!(found.is_empty(), "non-standard formats: {found:?}");
+    let search = listed["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "search_products")
+        .unwrap();
+    assert_eq!(search["inputSchema"]["properties"]["limit"]["minimum"], 0);
+}
+
 #[tokio::test]
 async fn search_returns_structured_content_and_a_matching_text_block() {
     let store = start(StoreConfig::default()).await;
