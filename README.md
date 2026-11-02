@@ -1,3 +1,5 @@
+# mcp-commerce-evals
+
 Evals for AI shopping assistants over MCP, with a reference store to run them against.
 
 An assistant that shops for a buyer does two things that can go wrong: it finds the wrong part, or

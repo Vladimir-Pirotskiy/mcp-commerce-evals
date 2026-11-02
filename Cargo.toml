@@ -8,6 +8,7 @@ edition = "2024"
 rust-version = "1.99"
 license = "MIT"
 authors = ["Vladimir Pirotskiy"]
+repository = "https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals"
 
 [workspace.dependencies]
 axum = "0.8.9"
