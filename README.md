@@ -366,8 +366,7 @@ Caveats: n is 44 queries, and a kind has 1 to 8 of them. The same person wrote t
 queries. Without a temperature the runs are not deterministic, so a rerun will differ; with three
 Haiku trials the interval treats runs of one query as independent, which they are not, so read
 pass@k and the per-query rows instead. Sonnet has a single trial, so its figure says nothing about
-run-to-run spread. `results/` also holds an earlier tool-level run (2026-11-02, an older file layout);
-the numbers above come from the 2026-11-03 files.
+run-to-run spread. The numbers above come from the 2026-11-03 files.
 
 The `mentions_expected` diagnostic in these two files was produced before it was made not
 applicable to `no_match` queries: their `by_kind.no_match` and `overall` figures count the
