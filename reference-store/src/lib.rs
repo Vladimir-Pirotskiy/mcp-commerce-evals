@@ -7,6 +7,7 @@
 mod api;
 mod cart;
 mod error;
+mod hosts;
 mod input;
 mod rate_limit;
 mod tools;
@@ -36,7 +37,9 @@ pub struct StoreConfig {
     /// Base of the fake checkout links that `create_cart` returns.
     pub checkout_url: String,
     /// `Host` header values accepted besides loopback; set the public host for a remote
-    /// deployment, otherwise the MCP endpoint answers 403.
+    /// deployment, otherwise the MCP endpoint answers 403. Browser `Origin` headers are accepted
+    /// from the same hosts (any scheme, any port unless the entry names one) and refused with 403
+    /// otherwise; requests without an `Origin` are not affected.
     pub allowed_hosts: Vec<String>,
     /// Requests per client per minute on `/mcp`.
     pub requests_per_minute: u32,
@@ -66,16 +69,15 @@ impl Default for StoreConfig {
 const MAX_BODY_BYTES: usize = 64 * 1024;
 
 fn mcp_config(config: &StoreConfig) -> StreamableHttpServerConfig {
-    let hosts = ["localhost", "127.0.0.1", "::1"]
-        .into_iter()
-        .map(str::to_owned)
-        .chain(config.allowed_hosts.iter().cloned());
+    let hosts = hosts::allowed_hosts(&config.allowed_hosts);
+    let origins = hosts::allowed_origins(&hosts);
     StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true)
         .with_sse_keep_alive(None)
         .with_max_request_body_bytes(MAX_BODY_BYTES)
         .with_allowed_hosts(hosts)
+        .with_allowed_origins(origins)
 }
 
 /// The store's HTTP application: `/mcp` (rate limited) and `/health`.

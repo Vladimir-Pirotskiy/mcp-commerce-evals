@@ -58,6 +58,22 @@ impl Running {
             .status()
     }
 
+    async fn rpc_with_headers(&self, headers: &[(&str, &str)]) -> StatusCode {
+        let mut request = self
+            .client
+            .post(format!("{}/mcp", self.base))
+            .header("accept", "application/json, text/event-stream")
+            .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        request
+            .send()
+            .await
+            .expect("request reaches the store")
+            .status()
+    }
+
     async fn call(&self, tool: &str, arguments: Value) -> Value {
         let response = self
             .rpc(
@@ -510,4 +526,58 @@ async fn forwarded_addresses_are_ignored_unless_trusted() {
         (first, second),
         (StatusCode::OK, StatusCode::TOO_MANY_REQUESTS)
     );
+}
+
+fn public_host() -> StoreConfig {
+    StoreConfig {
+        allowed_hosts: vec!["shop.example.org".to_owned()],
+        ..StoreConfig::default()
+    }
+}
+
+#[tokio::test]
+async fn a_configured_non_loopback_host_is_accepted_with_or_without_a_port() {
+    let store = start(public_host()).await;
+    for host in [
+        "shop.example.org",
+        "shop.example.org:8443",
+        "localhost:8787",
+    ] {
+        let status = store.rpc_with_headers(&[("host", host)]).await;
+        assert_eq!(status, StatusCode::OK, "{host}");
+    }
+    let other = store
+        .rpc_with_headers(&[("host", "shop.example.net")])
+        .await;
+    assert_eq!(other, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_browser_origin_must_be_on_the_allowed_host_list() {
+    let store = start(public_host()).await;
+    let allowed = [
+        "https://shop.example.org",
+        "http://shop.example.org:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:8787",
+        "http://[::1]:8787",
+    ];
+    for origin in allowed {
+        let status = store.rpc_with_headers(&[("origin", origin)]).await;
+        assert_eq!(status, StatusCode::OK, "{origin}");
+    }
+    for origin in [
+        "https://evil.example",
+        "https://shop.example.org.evil.example",
+        "null",
+    ] {
+        let status = store.rpc_with_headers(&[("origin", origin)]).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origin}");
+    }
+}
+
+#[tokio::test]
+async fn a_request_without_an_origin_header_is_still_served() {
+    let store = start(public_host()).await;
+    assert_eq!(store.rpc_with_headers(&[]).await, StatusCode::OK);
 }
