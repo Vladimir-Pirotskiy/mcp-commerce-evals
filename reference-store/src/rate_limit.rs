@@ -25,6 +25,10 @@
 //!   did nothing wrong. Tracked clients are unaffected. For a demo server that trade is the right
 //!   one; a production limiter would keep this state in an external store.
 //!
+//! Before a newcomer goes to the overflow bucket, windows that have already ended are evicted, so
+//! an idle table never pushes anyone into it. Who pays when the table is truly full of live
+//! clients: the newcomers, who share one budget and may get 429; tracked clients keep their own.
+//!
 //! # Where it runs
 //!
 //! The limiter wraps the MCP service, and the `Host` and `Origin` checks run inside that service
@@ -120,6 +124,11 @@ impl RateLimiter {
         let Table {
             clients, overflow, ..
         } = &mut *table;
+        if !clients.contains_key(&client) && clients.len() >= self.max_clients {
+            // Full: windows that ended since the last sweep are dead weight, so free them before
+            // pushing a newcomer into the shared overflow bucket.
+            clients.retain(|_, w| now.duration_since(w.start) < self.window);
+        }
         if clients.contains_key(&client) || clients.len() < self.max_clients {
             let slot = clients.entry(client).or_insert_with(|| Window::new(now));
             self.count(slot, self.limit, now)
@@ -288,6 +297,27 @@ mod tests {
         let table = limiter.table.lock().expect("lock");
         assert_eq!(table.clients.len(), 1, "only the new client is tracked");
         assert!(table.clients.contains_key(&ip("10.0.0.3")));
+    }
+
+    #[test]
+    fn a_full_table_frees_expired_windows_before_using_the_overflow_bucket() {
+        let limiter = RateLimiter::with_capacity(1, MINUTE, 2);
+        let t0 = Instant::now();
+        let secs = Duration::from_secs;
+        assert!(limiter.check(ip("10.0.0.1"), t0).is_ok());
+        assert!(limiter.check(ip("10.0.0.2"), t0 + secs(10)).is_ok());
+        // The sweep at t0+60 drops the first client only, and the next one is due a minute on.
+        assert!(limiter.check(ip("10.0.0.3"), t0 + secs(60)).is_ok());
+
+        // The second client's window ended at t0+70, yet no sweep is due before t0+120.
+        assert!(limiter.check(ip("10.0.0.4"), t0 + secs(75)).is_ok());
+
+        let table = limiter.table.lock().expect("lock");
+        assert!(
+            table.clients.contains_key(&ip("10.0.0.4")),
+            "tracked, not overflowed"
+        );
+        assert_eq!(table.overflow.used, 0);
     }
 
     #[test]
