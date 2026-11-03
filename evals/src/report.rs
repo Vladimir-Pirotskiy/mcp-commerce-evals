@@ -142,11 +142,12 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
 
 fn assistant_row(label: &str, s: &AssistantSummary) -> String {
     format!(
-        "| {label} | {} | {} | {:.2} | {:.2} | {} | {} | {:.1} | {} | {} |\n",
+        "| {label} | {} | {} | {:.2} | {} | {} | {} | {:.1} | {} | {} |\n",
         s.n,
         interval(s.answer_accuracy, s.answer_accuracy_ci),
         s.answer_accuracy_without_errors,
-        s.mentions_expected,
+        s.mentions_expected
+            .map_or_else(|| "n/a".to_owned(), |m| format!("{m:.2}")),
         s.unanswered,
         s.errors,
         s.mean_tool_calls,
@@ -194,6 +195,7 @@ pub fn assistant_markdown(report: &AssistantReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::assistant::AssistantResult;
 
     #[test]
     fn a_negative_zero_prints_as_plain_zero() {
@@ -201,5 +203,49 @@ mod tests {
         assert_eq!(two_places(-0.001), "0.00");
         assert_eq!(two_places(-0.5), "-0.50");
         assert_eq!(two_places(0.456), "0.46");
+    }
+
+    fn run(id: &str, kind: &str, expected: &[&str], mentions: bool) -> AssistantResult {
+        AssistantResult {
+            id: id.to_owned(),
+            kind: kind.to_owned(),
+            text: String::new(),
+            expected: expected.iter().map(|e| (*e).to_owned()).collect(),
+            final_answer: String::new(),
+            committed: None,
+            correct: true,
+            mentions_expected: mentions,
+            answered: true,
+            stop_reason: Some("end_turn".to_owned()),
+            tool_calls: 1,
+            tools_used: Vec::new(),
+            turns: 2,
+            input_tokens: 10,
+            output_tokens: 5,
+            error: None,
+            trial: 1,
+            models: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn mentions_expected_is_not_applicable_to_no_match_queries() {
+        let results = vec![
+            run("a", "typo", &["X-1"], true),
+            run("b", "typo", &["X-2"], true),
+            run("c", "no_match", &[], false),
+        ];
+        let report = AssistantReport::from_results("m", None, 1, results);
+
+        let json = serde_json::to_value(&report).unwrap();
+        assert!(json["by_kind"]["no_match"]["mentions_expected"].is_null());
+        assert_eq!(json["by_kind"]["typo"]["mentions_expected"], 1.0);
+        assert_eq!(json["overall"]["mentions_expected"], 1.0);
+
+        let table = assistant_markdown(&report);
+        let row = table.lines().find(|l| l.starts_with("| no_match")).unwrap();
+        assert!(row.contains("| n/a |"), "{row}");
+        let all = table.lines().find(|l| l.starts_with("| **all**")).unwrap();
+        assert!(all.contains("| 1.00 |"), "{all}");
     }
 }

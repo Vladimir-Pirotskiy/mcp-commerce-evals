@@ -212,7 +212,7 @@ reject the parameter; the report records `null` or the value. A tool that return
 content reaches the model as that JSON. The system prompt does not name a kind of store and asks
 the model to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
 only when that committed id equals an expected id after normalising case and punctuation; whether
-the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`).
+the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`; not applicable, `n/a` in the table and `null` in the JSON, for a `no_match` query, and left out of the overall figure).
 Only a `stop_reason` of `end_turn` is a final answer: `max_tokens`, `refusal`, `pause_turn` or
 anything else is recorded per query and counted as unanswered. The client retries HTTP 429, 529
 and 5xx up to three times with exponential backoff and jitter, honouring `retry-after`, and

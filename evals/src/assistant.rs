@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use crate::error::{Error, Result};
 use crate::mcp::McpClient;
 use crate::metrics::{Interval, normalize, pass_at_k, share, wilson};
-use crate::queries::Query;
+use crate::queries::{NO_MATCH_KIND, Query};
 
 /// Production endpoint of the API.
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -445,8 +445,10 @@ pub struct AssistantSummary {
     pub answer_accuracy_ci: Interval,
     /// The same share over the queries that had no API error.
     pub answer_accuracy_without_errors: f64,
-    /// Diagnostic: share of queries whose reply mentions an expected id anywhere.
-    pub mentions_expected: f64,
+    /// Diagnostic: share of queries whose reply mentions an expected id anywhere. Null (not
+    /// applicable) for a `no_match` query, which has no expected id, and over the queries of
+    /// other kinds in a mixed set; null when there are none.
+    pub mentions_expected: Option<f64>,
     /// Queries that ended without a final answer (a stop reason other than `end_turn`, or the
     /// turn limit) and had no API error.
     pub unanswered: usize,
@@ -539,12 +541,18 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
     let n = results.len();
     let count = |keep: fn(&AssistantResult) -> bool| results.iter().filter(|r| keep(r)).count();
     let errors = count(|r| r.error.is_some());
+    let with_expected = count(|r| r.kind != NO_MATCH_KIND);
     AssistantSummary {
         n,
         answer_accuracy: share(count(|r| r.correct), n),
         answer_accuracy_ci: wilson(count(|r| r.correct), n),
         answer_accuracy_without_errors: share(count(|r| r.correct), n - errors),
-        mentions_expected: share(count(|r| r.mentions_expected), n),
+        mentions_expected: (with_expected > 0).then(|| {
+            share(
+                count(|r| r.kind != NO_MATCH_KIND && r.mentions_expected),
+                with_expected,
+            )
+        }),
         unanswered: count(|r| r.error.is_none() && !r.answered),
         errors,
         mean_tool_calls: share(results.iter().map(|r| r.tool_calls as usize).sum(), n),

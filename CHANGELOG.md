@@ -38,6 +38,8 @@ First release.
 
 ### Fixed
 
+- The assistant report no longer scores `mentions_expected` for `no_match` queries, which expect
+  nothing and dragged the overall figure down; it is `n/a` in the table and `null` in the JSON.
 - A short live run against `claude-haiku-5-5` showed that the API answers HTTP 400 "`temperature` is
   deprecated for this model", so `temperature` is sent only with `--temperature`.
 - A run of the store with Claude Code (`claude -p`, Haiku, the store as its only server) found
