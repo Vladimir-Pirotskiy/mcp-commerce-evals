@@ -427,9 +427,12 @@ cargo deny --offline check licenses bans sources          # no network; see deny
 cargo deny check advisories                              # needs network (RustSec); CI runs it
 ```
 
-`Cargo.lock` is committed and holds only crate versions published before 2026-10-19, at least two
-weeks before it was generated. Nightly cargo resolved it, for the lockfile only (the build uses
-1.99.0):
+`Cargo.lock` is committed. Dependencies are taken after a 14-day cooldown: a version is used once
+it has been published for two weeks, and Dependabot is set to the same delay (`cooldown` in
+`.github/dependabot.yml`). The exception is a security fix, taken at once: `rustls-webpki` 0.103.16
+(published 2026-10-20) and `webpki-root-certs` 1.0.11 (2026-10-23) are in the lock for
+RUSTSEC-2026-0382 and RUSTSEC-2026-0383. The lock was first generated with nightly cargo
+(the build uses 1.99.0):
 
 ```sh
 cargo +nightly generate-lockfile -Zunstable-options --publish-time 2026-10-19T00:00:00Z
