@@ -1,26 +1,46 @@
 //! Markdown tables for the terminal and the JSON document written to disk.
 
 use std::fmt::Write;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
 use crate::assistant::{AssistantReport, AssistantSummary};
+use crate::error::{Error, Result};
+use crate::meta::Meta;
 use crate::metrics::{Interval, Summary};
 use crate::tool_level::ToolLevelReport;
 
 /// Everything one run produced; this is what `--out` writes.
 #[derive(Debug, Serialize)]
 pub struct EvalReport {
+    /// What produced the numbers: versions, inputs, server and model settings.
+    pub meta: Meta,
     /// MCP endpoint that was evaluated.
     pub store_url: String,
     /// Queries file that was used.
     pub queries_file: String,
-    /// Seconds since the Unix epoch when the run finished.
+    /// Seconds since the Unix epoch when the report was last written.
     pub unix_time: u64,
+    /// False while the run is still going, so a report found on disk after a crash says so.
+    pub complete: bool,
     /// Retrieval scores of the search tool.
     pub tool_level: ToolLevelReport,
     /// Scores of a model shopping through the tools; absent unless requested.
     pub assistant_level: Option<AssistantReport>,
+}
+
+impl EvalReport {
+    /// Writes the report as pretty JSON, stamping the time of the write.
+    pub fn write(&mut self, path: &Path) -> Result<()> {
+        self.unix_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json + "\n")
+            .map_err(|e| Error::Input(format!("cannot write {}: {e}", path.display())))
+    }
 }
 
 fn interval(value: f64, ci: Interval) -> String {

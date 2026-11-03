@@ -445,17 +445,20 @@ impl AssistantReport {
     }
 }
 
-/// Runs every query through the model, in file order.
+/// Runs every query through the model, in file order. After each query `on_progress` receives
+/// the report so far, so a caller can save partial results of a paid run that fails midway.
 pub async fn run(
     api: &Anthropic,
     mcp: &mut McpClient,
     queries: &[Query],
     max_turns: u32,
+    mut on_progress: impl FnMut(&AssistantReport) -> Result<()>,
 ) -> Result<AssistantReport> {
     let tools = api_tools(&mcp.list_tools().await?);
     let mut results = Vec::with_capacity(queries.len());
     for query in queries {
         results.push(answer(api, mcp, &tools, query, max_turns).await);
+        on_progress(&AssistantReport::from_results(&api.model, results.clone()))?;
     }
     Ok(AssistantReport::from_results(&api.model, results))
 }

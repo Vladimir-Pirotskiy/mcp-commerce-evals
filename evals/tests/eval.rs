@@ -454,7 +454,9 @@ async fn the_report_scores_each_query_and_counts_unanswered_apart_from_errors() 
         query("d", "chain four", "FER-CH-4296"),
     ];
 
-    let report = assistant::run(&api, &mut mcp, &queries, 2).await.unwrap();
+    let report = assistant::run(&api, &mut mcp, &queries, 2, |_| Ok(()))
+        .await
+        .unwrap();
 
     assert_eq!(report.model, "test-model");
     assert_eq!(report.temperature, 0.0);
@@ -606,7 +608,17 @@ async fn cli_exits_zero_and_writes_the_report_when_gates_hold() {
     .await;
 
     assert_eq!(code, 0, "{stderr}");
-    assert!(out.exists());
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(report["complete"], true);
+    let meta = &report["meta"];
+    assert_eq!(meta["crate_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(meta["queries_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(meta["top_k"], 10);
+    assert_eq!(meta["search_tool"], "search_products");
+    assert!(meta["server_info"]["name"].is_string(), "{meta}");
+    assert!(meta["protocol_version"].as_str().unwrap().starts_with("20"));
+    assert!(meta["assistant"].is_null());
+    assert!(report["tool_level"]["overall_without_filter"]["hit_at_1_ci"]["low"].is_number());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -667,4 +679,24 @@ async fn repeat_times_each_query_that_many_times_after_one_untimed_warm_up() {
     assert_eq!(mock.calls.load(Ordering::SeqCst), 1 + 2 * 3);
     assert_eq!(report.overall.latency_samples, 6);
     assert_eq!(report.queries[0].latencies_ms.len(), 3);
+}
+
+#[tokio::test]
+async fn assistant_progress_reports_the_partial_results_after_every_query() {
+    let store = spawn_store().await;
+    let script = vec![final_answer("ANSWER: A-1"), final_answer("ANSWER: B-2")];
+    let (api_server, _) = spawn_mock(script).await;
+    let api = client(&api_server, "k");
+    let mut mcp = connect(&store.base).await;
+    let queries = [query("a", "one", "A-1"), query("b", "two", "A-1")];
+    let mut seen = Vec::new();
+
+    assistant::run(&api, &mut mcp, &queries, 2, |partial| {
+        seen.push((partial.queries.len(), partial.overall.answer_accuracy));
+        Ok(())
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(seen, [(1, 1.0), (2, 0.5)]);
 }
