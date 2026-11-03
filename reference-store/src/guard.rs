@@ -114,18 +114,28 @@ mod tests {
         );
     }
 
+    /// Sets its flag when dropped: proof that the future holding it was cancelled (or finished).
+    struct DropFlag(Arc<AtomicBool>);
+
+    impl Drop for DropFlag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
     #[tokio::test]
     async fn a_request_that_outlives_its_deadline_gets_504_and_is_dropped() {
-        let finished = Arc::new(AtomicBool::new(false));
-        let flag = finished.clone();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let flag = dropped.clone();
         let router = Router::new()
             .route(
                 "/slow",
                 get(move || {
                     let flag = flag.clone();
                     async move {
+                        // Held across the await: dropped only when the handler future is.
+                        let _guard = DropFlag(flag);
                         tokio::time::sleep(Duration::from_secs(5)).await;
-                        flag.store(true, Ordering::SeqCst);
                         "late"
                     }
                 }),
@@ -139,6 +149,10 @@ mod tests {
         let response = reqwest::get(format!("{base}/slow")).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
-        assert!(!finished.load(Ordering::SeqCst));
+        // The sleep has about five seconds left, so only cancellation can have dropped the guard.
+        assert!(
+            dropped.load(Ordering::SeqCst),
+            "the handler future was not dropped when the 504 was sent"
+        );
     }
 }
