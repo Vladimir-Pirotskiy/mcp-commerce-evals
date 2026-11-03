@@ -78,7 +78,8 @@ an error instead of serving a shorter catalog. Prices must be whole cents from $
 with `Retry-After`) and a request that runs past 30 seconds (`--request-timeout-secs`) gets 504.
 The store stops on ctrl-c or SIGTERM, closing idle connections and finishing requests already
 in flight. Connections are capped (`--max-connections`, default 1024; a connection over the cap is
-closed without an answer) and read on a clock (`--header-read-timeout-secs`, default 10) so that a
+closed without an answer; the cap is global, not per IP, and the OS file-descriptor limit
+(`ulimit -n`) may need raising to reach it) and read on a clock (`--header-read-timeout-secs`, default 10) so that a
 client that does not finish its request line and headers is closed.
 `--allowed-host` takes a bare host with an optional port (`shop.example.org:8443`); a scheme, a
 path or other junk is refused at startup. Inputs: a query

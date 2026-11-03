@@ -130,7 +130,8 @@ The store is a demo meant to be exposed behind a proxy for a hosted assistant. I
   (`--header-read-timeout-secs`) has its connection closed, and so does an idle kept-alive
   connection that sends no next request in that time;
 - connection floods: at most 1024 connections open at once (`--max-connections`); a connection
-  over the cap is closed without an answer, never queued;
+  over the cap is closed without an answer, never queued. The cap is global, not per IP, and the
+  OS file-descriptor limit (`ulimit -n`) may need raising to reach it;
 - request floods: a cap on requests in flight (503) and a per-client rate limit;
 - cross-origin browser calls and DNS rebinding: `Host` and `Origin` are checked, case-insensitively;
 - exhaustion of the client table: it is bounded, with a shared overflow bucket.
