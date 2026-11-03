@@ -15,8 +15,12 @@ use crate::error::{Error, Result};
 /// Protocol revisions this client speaks over Streamable HTTP, newest first. A server may
 /// negotiate any of them, and `mcp-protocol-version` follows its choice.
 pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
-/// The revision requested in `initialize`: the newest one this client has been tested against.
-const REQUESTED_PROTOCOL_VERSION: &str = SUPPORTED_PROTOCOL_VERSIONS[1];
+/// The revision requested in `initialize`: the newest one listed. The client uses only the part
+/// of the protocol every listed revision shares (`initialize`, `tools/list`, `tools/call`,
+/// `ping`, JSON and event-stream replies, session ids); its tests run it at this revision against
+/// the in-process reference store, which grants it. Optional features added since (tasks,
+/// elicitation, sampling) are not used and not offered in `capabilities`.
+const REQUESTED_PROTOCOL_VERSION: &str = SUPPORTED_PROTOCOL_VERSIONS[0];
 
 /// What a tool call returned.
 #[derive(Debug, Clone)]

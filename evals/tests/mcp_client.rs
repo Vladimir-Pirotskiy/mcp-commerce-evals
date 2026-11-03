@@ -172,7 +172,7 @@ async fn later_requests_carry_the_protocol_version_the_server_negotiated() {
     mcp.close().await;
 
     let version = |method: &str| server.methods(method)[0].version.clone();
-    assert_eq!(version("initialize").as_deref(), Some("2025-06-18"));
+    assert_eq!(version("initialize").as_deref(), Some("2025-11-25"));
     assert_eq!(
         version("notifications/initialized").as_deref(),
         Some("2025-03-26")
@@ -190,7 +190,7 @@ async fn a_protocol_version_the_client_does_not_support_is_an_error_naming_both_
             Err(error) => error.to_string(),
         };
 
-        assert!(error.contains("2025-06-18"), "{error}");
+        assert!(error.contains("2025-11-25"), "{error}");
         assert!(error.contains(&format!("{version:?}")), "{error}");
     }
 }
