@@ -912,8 +912,10 @@ async fn trials_repeat_each_query_and_report_pass_at_k_and_the_model_the_api_nam
     assert!((pass[0].1 - 2.0 / 3.0).abs() < 1e-12);
     assert_eq!(pass[1], (2, 1.0));
     assert_eq!(pass[2], (3, 1.0));
-    let ci = report.overall.answer_accuracy_ci;
-    assert!(ci.low < 2.0 / 3.0 && 2.0 / 3.0 < ci.high, "{ci:?}");
+    assert_eq!(
+        report.overall.answer_accuracy_ci, None,
+        "three runs of one query give no interval"
+    );
     assert_eq!(report.response_models, ["test-model-resolved-2026"]);
     assert_eq!(report.queries[0].models, ["test-model-resolved-2026"]);
 }
@@ -1251,7 +1253,10 @@ async fn cli_trials_run_each_query_that_many_times_and_record_the_curve() {
     assert_eq!(assistant["pass_at_k"][1]["value"], 1.0);
     assert_eq!(report["meta"]["assistant"]["trials"], 2);
     assert!(report["meta"]["bootstrap_seed"].is_u64());
-    assert!(report["tool_level"]["overall"]["mrr_ci"]["low"].is_number());
+    assert!(
+        report["tool_level"]["overall"]["mrr_ci"].is_null(),
+        "no ranked queries ran"
+    );
     assert_eq!(assistant["response_models"][0], "test-model-resolved-2026");
 }
 

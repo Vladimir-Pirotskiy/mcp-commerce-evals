@@ -10,7 +10,7 @@ use crate::tool_level::QueryResult;
 
 /// Lowercase letters and digits only, so `ALD-CH-1002`, `ald ch 1002` and `aldch1002` agree.
 /// An id with none (all punctuation or non-ASCII) normalizes to the empty string; callers treat
-/// that as matching nothing, never as an id (see [`normalized_ids`]).
+/// that as matching nothing, never as an id.
 pub fn normalize(id: &str) -> String {
     id.chars()
         .filter(char::is_ascii_alphanumeric)
@@ -78,32 +78,57 @@ impl SplitMix64 {
     }
 }
 
+/// Fewest queries a bootstrap interval is shown for. Below it the resamples can take only a few
+/// distinct values and the percentile interval is far narrower than the real uncertainty.
+pub const MIN_BOOTSTRAP_N: usize = 10;
+
 /// The 95% percentile-bootstrap interval of the mean of `values`: resample them with replacement
 /// [`BOOTSTRAP_RESAMPLES`] times from [`BOOTSTRAP_SEED`], and take the 2.5th and 97.5th
-/// percentile of the resampled means. `0..0` for no values.
+/// percentile of the resampled means.
+///
+/// `None` (shown as `n/a`) when there are fewer than [`MIN_BOOTSTRAP_N`] values, or when they are
+/// all equal: a percentile bootstrap of such a sample is a zero-width interval that claims a
+/// certainty the data cannot give.
 #[must_use]
-pub fn bootstrap_mean_ci(values: &[f64]) -> Interval {
-    if values.is_empty() {
-        return Interval {
-            low: 0.0,
-            high: 0.0,
-        };
+pub fn bootstrap_mean_ci(values: &[f64]) -> Option<Interval> {
+    let clusters: Vec<&[f64]> = values.chunks(1).collect();
+    cluster_bootstrap_mean_ci(&clusters)
+}
+
+/// Like [`bootstrap_mean_ci`], but resamples whole `clusters` (the repeated runs of one query)
+/// rather than single values, so runs of a query stay together and its trials are not counted as
+/// independent. The mean is over all values of the resampled clusters. `None` under the same
+/// rules, counted in clusters.
+#[must_use]
+pub fn cluster_bootstrap_mean_ci(clusters: &[&[f64]]) -> Option<Interval> {
+    let sums: Vec<(f64, f64)> = clusters
+        .iter()
+        .filter(|c| !c.is_empty())
+        .map(|c| (c.iter().sum::<f64>(), to_f64(c.len())))
+        .collect();
+    let cluster_means: Vec<f64> = sums.iter().map(|(sum, size)| sum / size).collect();
+    let (lowest, highest) = cluster_means
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), m| {
+            (lo.min(*m), hi.max(*m))
+        });
+    if sums.len() < MIN_BOOTSTRAP_N || highest - lowest < 1e-12 {
+        return None;
     }
     let mut rng = SplitMix64(BOOTSTRAP_SEED);
-    let size = to_f64(values.len());
     let mut means: Vec<f64> = (0..BOOTSTRAP_RESAMPLES)
         .map(|_| {
-            let total: f64 = (0..values.len())
-                .map(|_| values[rng.below(values.len())])
-                .sum();
-            total / size
+            let (total, count) = (0..sums.len())
+                .map(|_| sums[rng.below(sums.len())])
+                .fold((0.0, 0.0), |(t, c), (sum, size)| (t + sum, c + size));
+            total / count
         })
         .collect();
     means.sort_by(f64::total_cmp);
-    Interval {
+    Some(Interval {
         low: means[BOOTSTRAP_RESAMPLES * 25 / 1000],
         high: means[BOOTSTRAP_RESAMPLES * 975 / 1000 - 1],
-    }
+    })
 }
 
 /// Unbiased pass@k (Chen et al., 2021): the chance that at least one of `k` runs drawn without
@@ -180,17 +205,18 @@ pub struct Summary {
     /// Mean reciprocal rank (0 for a query with no right answer in the first [`RANK_DEPTH`]
     /// results).
     pub mrr: f64,
-    /// 95% bootstrap interval of `mrr` (seeded, see [`BOOTSTRAP_SEED`]).
-    pub mrr_ci: Interval,
+    /// 95% bootstrap interval of `mrr` (seeded, see [`BOOTSTRAP_SEED`]); null (`n/a`) under
+    /// [`MIN_BOOTSTRAP_N`] queries or when every query scored the same.
+    pub mrr_ci: Option<Interval>,
     /// Mean over queries of capped recall@10: expected ids found in the first ten results over
     /// `min(|expected|, 10)`.
     pub recall_at_10: f64,
     /// 95% bootstrap interval of `recall_at_10`.
-    pub recall_at_10_ci: Interval,
+    pub recall_at_10_ci: Option<Interval>,
     /// Mean nDCG over the first ten results, with binary relevance.
     pub ndcg_at_10: f64,
     /// 95% bootstrap interval of `ndcg_at_10`.
-    pub ndcg_at_10_ci: Interval,
+    pub ndcg_at_10_ci: Option<Interval>,
     /// Queries whose tool call failed; they count as misses.
     pub errors: usize,
     /// Number of timed search calls behind the latency figures.
@@ -468,9 +494,9 @@ mod tests {
         let values: Vec<f64> = (0..40)
             .map(|i| if i % 4 == 0 { 0.0 } else { 1.0 })
             .collect();
-        let first = bootstrap_mean_ci(&values);
+        let first = bootstrap_mean_ci(&values).unwrap();
         assert_eq!(
-            first,
+            Some(first),
             bootstrap_mean_ci(&values),
             "same data, same interval"
         );
@@ -481,15 +507,38 @@ mod tests {
     }
 
     #[test]
-    fn the_bootstrap_interval_of_equal_values_is_a_point_and_of_none_is_zero() {
-        let point = bootstrap_mean_ci(&[0.5; 7]);
-        assert_eq!((point.low, point.high), (0.5, 0.5));
-        assert_eq!(
-            bootstrap_mean_ci(&[]),
-            Interval {
-                low: 0.0,
-                high: 0.0
-            }
+    fn a_bootstrap_interval_is_not_shown_for_a_tiny_or_constant_sample() {
+        // A constant sample has a zero-width percentile interval: it would print "1.00-1.00".
+        assert_eq!(bootstrap_mean_ci(&[1.0; 5]), None);
+        assert_eq!(bootstrap_mean_ci(&[0.3]), None);
+        assert_eq!(bootstrap_mean_ci(&[]), None);
+        assert_eq!(bootstrap_mean_ci(&[0.5; 40]), None, "degenerate at any n");
+        let nine: Vec<f64> = (0..9).map(|i| f64::from(i % 2)).collect();
+        assert_eq!(bootstrap_mean_ci(&nine), None, "below the minimum n");
+        let ten: Vec<f64> = (0..10).map(|i| f64::from(i % 2)).collect();
+        assert!(bootstrap_mean_ci(&ten).is_some());
+    }
+
+    #[test]
+    fn resampling_whole_queries_widens_the_interval_for_perfectly_correlated_trials() {
+        // 20 queries, 3 trials each: half always right, half always wrong.
+        let query = |score: f64| vec![score; 3];
+        let runs: Vec<Vec<f64>> = (0..20).map(|i| query(f64::from(i % 2))).collect();
+        let clusters: Vec<&[f64]> = runs.iter().map(Vec::as_slice).collect();
+        let flat: Vec<f64> = runs.iter().flatten().copied().collect();
+
+        let clustered = cluster_bootstrap_mean_ci(&clusters).unwrap();
+        let naive = bootstrap_mean_ci(&flat).unwrap();
+        let wilson = wilson(30, 60);
+
+        let width = |i: Interval| i.high - i.low;
+        assert!(
+            width(clustered) > width(naive) * 1.4,
+            "{clustered:?} vs {naive:?}"
+        );
+        assert!(
+            width(clustered) > width(wilson) * 1.4,
+            "{clustered:?} vs {wilson:?}"
         );
     }
 

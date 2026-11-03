@@ -12,7 +12,9 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 use crate::mcp::McpClient;
-use crate::metrics::{Interval, normalize, normalized_ids, pass_at_k, share, wilson};
+use crate::metrics::{
+    Interval, cluster_bootstrap_mean_ci, normalize, normalized_ids, pass_at_k, share, wilson,
+};
 use crate::queries::{NO_MATCH_KIND, Query};
 
 /// Production endpoint of the API.
@@ -442,9 +444,11 @@ pub struct AssistantSummary {
     /// Share of all runs whose committed answer is right (an expected id, or `none` for a
     /// `no_match` query); an API error is a miss.
     pub answer_accuracy: f64,
-    /// 95% Wilson interval of `answer_accuracy`. It counts every run as independent, so with
-    /// `--trials` above 1, which repeats the same queries, it is narrower than the truth.
-    pub answer_accuracy_ci: Interval,
+    /// 95% interval of `answer_accuracy`. With one run per query it is the Wilson interval. With
+    /// `--trials` above 1 the runs of a query are not independent, so it is a seeded bootstrap
+    /// that resamples whole queries and keeps each query's trials together; null (`n/a`) under
+    /// [`crate::metrics::MIN_BOOTSTRAP_N`] queries or when every query scored the same.
+    pub answer_accuracy_ci: Option<Interval>,
     /// The same share over the queries that had no API error.
     pub answer_accuracy_without_errors: f64,
     /// Diagnostic: share of queries whose reply mentions an expected id anywhere. Null (not
@@ -539,6 +543,26 @@ fn pass_curve(results: &[AssistantResult], trials: u32) -> Vec<PassAtK> {
         .collect()
 }
 
+/// The interval of the share of correct runs: Wilson for one run per query, otherwise a cluster
+/// bootstrap over the queries (see [`AssistantSummary::answer_accuracy_ci`]).
+fn accuracy_interval(results: &[&AssistantResult]) -> Option<Interval> {
+    let mut by_query: BTreeMap<&str, Vec<f64>> = BTreeMap::new();
+    for result in results {
+        by_query
+            .entry(result.id.as_str())
+            .or_default()
+            .push(f64::from(u8::from(result.correct)));
+    }
+    if by_query.values().all(|runs| runs.len() <= 1) {
+        return Some(wilson(
+            results.iter().filter(|r| r.correct).count(),
+            results.len(),
+        ));
+    }
+    let clusters: Vec<&[f64]> = by_query.values().map(Vec::as_slice).collect();
+    cluster_bootstrap_mean_ci(&clusters)
+}
+
 fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
     let n = results.len();
     let count = |keep: fn(&AssistantResult) -> bool| results.iter().filter(|r| keep(r)).count();
@@ -547,7 +571,7 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
     AssistantSummary {
         n,
         answer_accuracy: share(count(|r| r.correct), n),
-        answer_accuracy_ci: wilson(count(|r| r.correct), n),
+        answer_accuracy_ci: accuracy_interval(results),
         answer_accuracy_without_errors: share(count(|r| r.correct), n - errors),
         mentions_expected: (with_expected > 0).then(|| {
             share(

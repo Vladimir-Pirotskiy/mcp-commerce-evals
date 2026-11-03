@@ -58,21 +58,25 @@ fn two_places(value: f64) -> String {
     }
 }
 
-fn interval(value: f64, ci: Interval) -> String {
-    format!(
-        "{} ({}-{})",
-        two_places(value),
-        two_places(ci.low),
-        two_places(ci.high)
-    )
+/// `value (low-high)`, or `value (n/a)` when there is no interval to show.
+fn interval(value: f64, ci: Option<Interval>) -> String {
+    match ci {
+        Some(ci) => format!(
+            "{} ({}-{})",
+            two_places(value),
+            two_places(ci.low),
+            two_places(ci.high)
+        ),
+        None => format!("{} (n/a)", two_places(value)),
+    }
 }
 
 fn tool_row(label: &str, s: &Summary) -> String {
     format!(
         "| {label} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
         s.n,
-        interval(s.hit_at_1, s.hit_at_1_ci),
-        interval(s.hit_at_5, s.hit_at_5_ci),
+        interval(s.hit_at_1, Some(s.hit_at_1_ci)),
+        interval(s.hit_at_5, Some(s.hit_at_5_ci)),
         interval(s.recall_at_10, s.recall_at_10_ci),
         interval(s.ndcg_at_10, s.ndcg_at_10_ci),
         interval(s.mrr, s.mrr_ci),
@@ -184,7 +188,8 @@ pub fn assistant_markdown(report: &AssistantReport) -> String {
             .collect();
         let _ = write!(
             out,
-            "\n{} trials per query; the interval above treats runs as independent. {}\n",
+            "\n{} trials per query; the interval above resamples whole queries, keeping each query's \
+             trials together. {}\n",
             report.trials,
             curve.join(", ")
         );
@@ -226,6 +231,52 @@ mod tests {
             trial: 1,
             models: Vec::new(),
         }
+    }
+
+    fn trial_runs(
+        queries: usize,
+        trials: u32,
+        right: impl Fn(usize) -> bool,
+    ) -> Vec<AssistantResult> {
+        (0..queries)
+            .flat_map(|q| (1..=trials).map(move |t| (q, t)))
+            .map(|(q, trial)| {
+                let mut result = run(&format!("q{q}"), "typo", &["X"], true);
+                result.correct = right(q);
+                result.trial = trial;
+                result
+            })
+            .collect()
+    }
+
+    #[test]
+    fn with_trials_the_accuracy_interval_resamples_whole_queries_and_is_wider_than_wilson() {
+        // Half the queries are right in every trial, half in none: the trials say nothing new.
+        let report = AssistantReport::from_results("m", None, 3, trial_runs(20, 3, |q| q % 2 == 0));
+        let clustered = report
+            .overall
+            .answer_accuracy_ci
+            .expect("20 queries is enough");
+        let naive = crate::metrics::wilson(30, 60);
+        assert!(
+            clustered.high - clustered.low > (naive.high - naive.low) * 1.4,
+            "{clustered:?} vs {naive:?}"
+        );
+        assert!(assistant_markdown(&report).contains("resamples whole queries"));
+    }
+
+    #[test]
+    fn with_one_trial_the_accuracy_interval_stays_wilson_and_tiny_or_constant_samples_are_na() {
+        let one = AssistantReport::from_results("m", None, 1, trial_runs(20, 1, |q| q % 2 == 0));
+        assert_eq!(
+            one.overall.answer_accuracy_ci,
+            Some(crate::metrics::wilson(10, 20))
+        );
+        let constant = AssistantReport::from_results("m", None, 3, trial_runs(20, 3, |_| true));
+        assert_eq!(constant.overall.answer_accuracy_ci, None);
+        let few = AssistantReport::from_results("m", None, 3, trial_runs(4, 3, |q| q < 2));
+        assert_eq!(few.overall.answer_accuracy_ci, None);
+        assert!(assistant_markdown(&few).contains("(n/a)"));
     }
 
     #[test]
