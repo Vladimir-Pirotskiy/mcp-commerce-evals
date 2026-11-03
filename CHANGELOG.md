@@ -20,8 +20,11 @@ All notable changes to this project are documented here. The format follows
 - One `X-Forwarded-For` line that is not UTF-8 made the rate limiter name every client by the
   proxy's address. Entries are counted on raw bytes and only the trusted entry must be UTF-8 and
   an address; otherwise the client is named by the socket peer.
-- The client asked for protocol revision 2025-06-18 although it lists 2025-11-25 as supported;
-  it now asks for the newest revision it lists (the in-process store grants it).
+- The client now requests protocol revision 2025-06-18 and supports 2025-06-18 and 2025-03-26.
+  It does not list 2025-11-25, because that revision lets a server end an event stream before
+  the reply and expects a resume with `Last-Event-ID`, which the client does not do; a server
+  that answers with it gets a clear error. `initialize` no longer sends `mcp-protocol-version`
+  (later requests send the negotiated one).
 - The assistant table's count column is headed `runs`, because it counts runs, not queries.
 
 ### Changed

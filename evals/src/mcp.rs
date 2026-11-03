@@ -12,14 +12,17 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 
-/// Protocol revisions this client speaks over Streamable HTTP, newest first. A server may
-/// negotiate any of them, and `mcp-protocol-version` follows its choice.
-pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
-/// The revision requested in `initialize`: the newest one listed. The client uses only the part
-/// of the protocol every listed revision shares (`initialize`, `tools/list`, `tools/call`,
-/// `ping`, JSON and event-stream replies, session ids); its tests run it at this revision against
-/// the in-process reference store, which grants it. Optional features added since (tasks,
-/// elicitation, sampling) are not used and not offered in `capabilities`.
+/// Protocol revisions this client speaks over Streamable HTTP, newest first. `initialize`
+/// requests the first one; a server that answers with another listed revision is followed, and
+/// `mcp-protocol-version` on later requests carries its choice. 2025-11-25 is deliberately not
+/// listed: from that revision a server may close an event stream before the reply arrives and
+/// expect the client to resume it with a GET and `Last-Event-ID` (SEP-1699), which this client
+/// does not do. A server that answers with it is refused with a clear error.
+pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 2] = ["2025-06-18", "2025-03-26"];
+/// The revision requested in `initialize`. The client uses only the part of the protocol both
+/// listed revisions share (`initialize`, `tools/list`, `tools/call`, `ping`, JSON and
+/// event-stream replies, session ids); optional features added since (tasks, elicitation,
+/// sampling) are not used and not offered in `capabilities`.
 const REQUESTED_PROTOCOL_VERSION: &str = SUPPORTED_PROTOCOL_VERSIONS[0];
 
 /// What a tool call returned.
@@ -49,8 +52,9 @@ pub struct McpClient {
     session: Option<String>,
     next_id: u64,
     handshake: ServerHandshake,
-    /// Sent as `mcp-protocol-version`: the requested revision until the server picks one.
-    protocol_header: &'static str,
+    /// Sent as `mcp-protocol-version` on every request after `initialize`, which carries none
+    /// because the spec requires the header only once a version is negotiated.
+    protocol_header: Option<&'static str>,
 }
 
 /// Most `tools/list` pages followed before the client gives up on a server that never stops
@@ -75,7 +79,7 @@ impl McpClient {
                 server_info: Value::Null,
                 protocol_version: String::new(),
             },
-            protocol_header: REQUESTED_PROTOCOL_VERSION,
+            protocol_header: None,
         };
         client.initialize().await?;
         Ok(client)
@@ -83,7 +87,7 @@ impl McpClient {
 
     /// `initialize` followed by `notifications/initialized`, on a client without a session.
     async fn initialize(&mut self) -> Result<()> {
-        self.protocol_header = REQUESTED_PROTOCOL_VERSION;
+        self.protocol_header = None;
         let params = json!({
             "protocolVersion": REQUESTED_PROTOCOL_VERSION,
             "capabilities": {},
@@ -93,7 +97,7 @@ impl McpClient {
             return Err(Error::Protocol("initialize: HTTP 404".to_owned()));
         };
         let negotiated = reply["protocolVersion"].as_str().unwrap_or_default();
-        self.protocol_header = SUPPORTED_PROTOCOL_VERSIONS
+        let chosen = SUPPORTED_PROTOCOL_VERSIONS
             .into_iter()
             .find(|supported| *supported == negotiated)
             .ok_or_else(|| {
@@ -102,6 +106,7 @@ impl McpClient {
                     SUPPORTED_PROTOCOL_VERSIONS.join(", ")
                 ))
             })?;
+        self.protocol_header = Some(chosen);
         self.handshake = ServerHandshake {
             server_info: reply["serverInfo"].clone(),
             protocol_version: negotiated.to_owned(),
@@ -115,13 +120,14 @@ impl McpClient {
         let Some(session) = &self.session else {
             return;
         };
-        let _ = self
+        let mut request = self
             .http
             .delete(&self.url)
-            .header("mcp-protocol-version", self.protocol_header)
-            .header("mcp-session-id", session)
-            .send()
-            .await;
+            .header("mcp-session-id", session);
+        if let Some(version) = self.protocol_header {
+            request = request.header("mcp-protocol-version", version);
+        }
+        let _ = request.send().await;
     }
 
     /// What the server reported when the session was opened.
@@ -193,8 +199,10 @@ impl McpClient {
             .http
             .post(&self.url)
             .header(ACCEPT, "application/json, text/event-stream")
-            .header("mcp-protocol-version", self.protocol_header)
             .json(body);
+        if let Some(version) = self.protocol_header {
+            request = request.header("mcp-protocol-version", version);
+        }
         if let Some(session) = &self.session {
             request = request.header("mcp-session-id", session);
         }

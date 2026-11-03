@@ -164,20 +164,22 @@ fn negotiating(version: &'static str) -> impl Fn(&Value) -> Reply + Send + Sync 
 }
 
 #[tokio::test]
-async fn later_requests_carry_the_protocol_version_the_server_negotiated() {
+async fn initialize_carries_no_protocol_header_and_later_requests_carry_the_negotiated_one() {
     let server = spawn_raw(negotiating("2025-03-26")).await;
     let mut mcp = McpClient::connect(&server.url(), TIMEOUT).await.unwrap();
 
     mcp.list_tools().await.unwrap();
     mcp.close().await;
 
-    let version = |method: &str| server.methods(method)[0].version.clone();
-    assert_eq!(version("initialize").as_deref(), Some("2025-11-25"));
+    let seen = |method: &str| server.methods(method)[0].clone();
+    let initialize = seen("initialize");
+    assert_eq!(initialize.version, None);
+    assert_eq!(initialize.body["params"]["protocolVersion"], "2025-06-18");
     assert_eq!(
-        version("notifications/initialized").as_deref(),
+        seen("notifications/initialized").version.as_deref(),
         Some("2025-03-26")
     );
-    assert_eq!(version("tools/list").as_deref(), Some("2025-03-26"));
+    assert_eq!(seen("tools/list").version.as_deref(), Some("2025-03-26"));
 }
 
 #[tokio::test]
@@ -190,7 +192,7 @@ async fn a_protocol_version_the_client_does_not_support_is_an_error_naming_both_
             Err(error) => error.to_string(),
         };
 
-        assert!(error.contains("2025-11-25"), "{error}");
+        assert!(error.contains("2025-06-18"), "{error}");
         assert!(error.contains(&format!("{version:?}")), "{error}");
     }
 }

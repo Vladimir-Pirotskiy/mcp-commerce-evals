@@ -1471,11 +1471,10 @@ async fn cli_exits_2_when_the_api_answers_200_with_html() {
 }
 
 #[tokio::test]
-async fn the_client_asks_for_its_newest_protocol_revision_and_the_store_grants_it() {
+async fn the_client_asks_for_2025_06_18_and_the_store_grants_it() {
     let store = spawn_store().await;
 
     let mcp = connect(&store.base).await;
 
-    let newest = mcp_commerce_evals::mcp::SUPPORTED_PROTOCOL_VERSIONS[0];
-    assert_eq!(mcp.handshake().protocol_version, newest);
+    assert_eq!(mcp.handshake().protocol_version, "2025-06-18");
 }

@@ -97,8 +97,11 @@ client reads JSON and event-stream replies (an event stream is read as it arrive
 returns when the reply to its request does, even if the server keeps the stream open), answers a
 server `ping` seen in the stream, carries a session id when the server issues one, opens a new
 session once if the server answers 404 to it, and ends the session with a DELETE (a 405 is fine)
-when the run completes. It asks for protocol revision 2025-11-25 in `initialize`, sends the
-`mcp-protocol-version` the server negotiates back (2025-11-25, 2025-06-18 or 2025-03-26) and fails with a clear message on any other. On a non-2xx reply the error
+when the run completes. It asks for protocol revision 2025-06-18 in `initialize`, which carries no
+`mcp-protocol-version` header; later requests send the version the server negotiates back
+(2025-06-18 or 2025-03-26), and any other answer, 2025-11-25 included, fails with a clear message.
+The client does not resume an event stream the server closes early (2025-11-25), so it does not
+offer that revision. On a non-2xx reply the error
 carries the JSON-RPC message from the body when there is one. Server-initiated requests other
 than `ping` (sampling, roots) are not supported.
 
