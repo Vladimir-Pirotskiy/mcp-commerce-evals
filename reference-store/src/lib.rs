@@ -6,6 +6,7 @@
 
 mod api;
 mod cart;
+mod error;
 mod rate_limit;
 mod tools;
 

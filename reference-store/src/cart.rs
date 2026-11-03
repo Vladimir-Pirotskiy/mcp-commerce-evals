@@ -5,33 +5,33 @@ use std::collections::BTreeMap;
 use catalog::{Catalog, Part, StockStatus};
 
 use crate::api::{Availability, CartLine, CartOutput, LineAvailability, LineRequest};
+use crate::error::{ToolError, echo};
 
 /// Most lines one call may carry.
 pub const MAX_LINES: usize = 20;
 /// Most units of one part in one line.
 pub const MAX_QUANTITY: u32 = 99;
 
-/// Why a request was refused.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Refusal(pub String);
+/// What a buyer is told about a part number the catalog does not have.
+const UNKNOWN_PART_MESSAGE: &str = "No part has this number. Use search_products to find it.";
 
 fn quantity_of(line: &LineRequest) -> u32 {
     line.quantity.unwrap_or(1).clamp(1, MAX_QUANTITY)
 }
 
 /// Rejects empty or oversized requests and out-of-range quantities.
-pub fn validate(lines: &[LineRequest]) -> Result<(), Refusal> {
+pub fn validate(lines: &[LineRequest]) -> Result<(), ToolError> {
     if lines.is_empty() || lines.len() > MAX_LINES {
-        return Err(Refusal(format!("Send between 1 and {MAX_LINES} items.")));
+        return Err(ToolError::ItemCount { max: MAX_LINES });
     }
     match lines
         .iter()
         .find(|l| l.quantity.is_some_and(|q| !(1..=MAX_QUANTITY).contains(&q)))
     {
-        Some(line) => Err(Refusal(format!(
-            "Quantity for {} must be between 1 and {MAX_QUANTITY}.",
-            line.id
-        ))),
+        Some(line) => Err(ToolError::Quantity {
+            id: line.id.clone(),
+            max: MAX_QUANTITY,
+        }),
         None => Ok(()),
     }
 }
@@ -77,7 +77,7 @@ pub fn check(catalog: &Catalog, lines: &[LineRequest]) -> Vec<LineAvailability> 
                     quantity_on_shelf: 0,
                     restock_days: None,
                     unit_price_usd: None,
-                    message: "No part has this number. Use search_products to find it.".to_owned(),
+                    message: UNKNOWN_PART_MESSAGE.to_owned(),
                 };
             };
             let (availability, message) = describe(part, requested);
@@ -110,27 +110,54 @@ fn fingerprint(text: &str) -> u64 {
     })
 }
 
-/// Builds a cart, merging repeated parts. Refuses unknown parts, parts that are out of stock and
-/// quantities beyond the shelf; backordered parts are allowed and flagged.
+/// Sums the requested quantity per part, so a part sent on several lines is judged once.
+/// Lines naming no known part are described in `problems`.
+fn merge_lines<'a>(
+    catalog: &'a Catalog,
+    lines: &[LineRequest],
+    problems: &mut Vec<String>,
+) -> BTreeMap<&'a str, (&'a Part, u32)> {
+    let mut merged = BTreeMap::new();
+    for line in lines {
+        match catalog.get(&line.id) {
+            Some(part) => {
+                merged.entry(part.id.as_str()).or_insert((part, 0)).1 += quantity_of(line);
+            }
+            None => problems.push(format!("{}: {UNKNOWN_PART_MESSAGE}", echo(&line.id))),
+        }
+    }
+    merged
+}
+
+/// Builds a cart, merging repeated parts first and judging the merged quantity. Refuses unknown
+/// parts, parts that are out of stock, merged quantities beyond the shelf or beyond
+/// [`MAX_QUANTITY`]; backordered parts are allowed and flagged.
 pub fn build_cart(
     catalog: &Catalog,
     lines: &[LineRequest],
     checkout_base: &str,
-) -> Result<CartOutput, Refusal> {
+) -> Result<CartOutput, ToolError> {
     validate(lines)?;
-    let mut merged: BTreeMap<String, (&Part, u32)> = BTreeMap::new();
     let mut problems = Vec::new();
-    for (line, status) in lines.iter().zip(check(catalog, lines)) {
-        match (catalog.get(&line.id), status.availability) {
-            (Some(part), Availability::Available | Availability::Backorder) => {
-                let entry = merged.entry(part.id.clone()).or_insert((part, 0));
-                entry.1 = (entry.1 + status.requested).min(MAX_QUANTITY);
-            }
-            _ => problems.push(format!("{}: {}", line.id, status.message)),
+    let merged = merge_lines(catalog, lines, &mut problems);
+    for (part, total) in merged.values() {
+        if *total > MAX_QUANTITY {
+            return Err(ToolError::MergedQuantity {
+                id: part.id.clone(),
+                total: *total,
+                max: MAX_QUANTITY,
+            });
+        }
+        let (availability, message) = describe(part, *total);
+        if !matches!(
+            availability,
+            Availability::Available | Availability::Backorder
+        ) {
+            problems.push(format!("{}: {message}", part.id));
         }
     }
     if !problems.is_empty() {
-        return Err(Refusal(format!("Cart not created. {}", problems.join(" "))));
+        return Err(ToolError::CartRefused { problems });
     }
     let cart_lines: Vec<CartLine> = merged
         .values()

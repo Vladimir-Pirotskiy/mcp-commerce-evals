@@ -12,6 +12,7 @@ use crate::api::{
     SearchArgs, SearchOutput,
 };
 use crate::cart;
+use crate::error::ToolError;
 
 const DEFAULT_LIMIT: u32 = 5;
 const MAX_LIMIT: u32 = 25;
@@ -57,16 +58,17 @@ impl ReferenceStore {
     fn search_products(
         &self,
         Parameters(args): Parameters<SearchArgs>,
-    ) -> Result<Json<SearchOutput>, String> {
+    ) -> Result<Json<SearchOutput>, ToolError> {
         let text = args.query.unwrap_or_default();
         if text.chars().count() > MAX_QUERY_CHARS {
-            return Err(format!(
-                "query is longer than {MAX_QUERY_CHARS} characters."
-            ));
+            return Err(ToolError::TooLong {
+                field: "query",
+                max: MAX_QUERY_CHARS,
+            });
         }
         let fits = args.fits.unwrap_or_default();
         if fits.len() > MAX_FITS {
-            return Err(format!("fits takes at most {MAX_FITS} requirements."));
+            return Err(ToolError::TooManyFits { max: MAX_FITS });
         }
         let query = SearchQuery {
             text,
@@ -109,13 +111,10 @@ impl ReferenceStore {
     fn get_product(
         &self,
         Parameters(args): Parameters<GetProductArgs>,
-    ) -> Result<Json<ProductDetail>, String> {
+    ) -> Result<Json<ProductDetail>, ToolError> {
         match self.catalog.get(&args.id) {
             Some(part) => Ok(Json(ProductDetail { part: part.clone() })),
-            None => Err(format!(
-                "No part has the id '{}'. Copy ids from search_products results.",
-                args.id
-            )),
+            None => Err(ToolError::UnknownPart { id: args.id }),
         }
     }
 
@@ -135,8 +134,8 @@ impl ReferenceStore {
     fn check_availability(
         &self,
         Parameters(args): Parameters<LinesArgs>,
-    ) -> Result<Json<AvailabilityOutput>, String> {
-        cart::validate(&args.items).map_err(|r| r.0)?;
+    ) -> Result<Json<AvailabilityOutput>, ToolError> {
+        cart::validate(&args.items)?;
         Ok(Json(AvailabilityOutput {
             items: cart::check(&self.catalog, &args.items),
         }))
@@ -160,10 +159,8 @@ impl ReferenceStore {
     fn create_cart(
         &self,
         Parameters(args): Parameters<LinesArgs>,
-    ) -> Result<Json<CartOutput>, String> {
-        cart::build_cart(&self.catalog, &args.items, &self.checkout_base)
-            .map(Json)
-            .map_err(|r| r.0)
+    ) -> Result<Json<CartOutput>, ToolError> {
+        cart::build_cart(&self.catalog, &args.items, &self.checkout_base).map(Json)
     }
 }
 

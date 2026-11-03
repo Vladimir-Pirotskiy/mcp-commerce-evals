@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use catalog::demo_catalog;
+use catalog::{StockStatus, demo_catalog};
 use reference_store::{StoreConfig, app, serve};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
@@ -238,15 +238,69 @@ async fn product_availability_and_cart_flow() {
     );
 }
 
+/// The text of a tool result that must be an error.
+fn error_text(result: &Value) -> &str {
+    assert_eq!(result["isError"], true, "{result}");
+    result["content"][0]["text"].as_str().expect("error text")
+}
+
 #[tokio::test]
-async fn tool_errors_are_reported_to_the_assistant_not_as_http_errors() {
+async fn tool_errors_are_reported_to_the_assistant_with_a_recovery_hint() {
     let store = start(StoreConfig::default()).await;
     let missing = store
         .call("get_product", json!({ "id": "NOPE-0000" }))
         .await;
-    assert_eq!(missing["isError"], true);
+    assert_eq!(
+        error_text(&missing),
+        "No part has the id 'NOPE-0000'. Copy ids from search_products results."
+    );
     let cart = store.call("create_cart", json!({ "items": [] })).await;
-    assert_eq!(cart["isError"], true);
+    assert_eq!(error_text(&cart), "Send between 1 and 20 items.");
+}
+
+fn first_part(stock: StockStatus, at_least: u32) -> catalog::Part {
+    demo_catalog()
+        .parts()
+        .iter()
+        .find(|p| p.stock == stock && p.quantity_available >= at_least)
+        .expect("the demo catalog has such a part")
+        .clone()
+}
+
+#[tokio::test]
+async fn repeated_lines_are_checked_against_the_shelf_as_one_quantity() {
+    let store = start(StoreConfig::default()).await;
+    let part = first_part(StockStatus::InStock, 2);
+    let half = part.quantity_available;
+    let cart = store
+        .call(
+            "create_cart",
+            json!({ "items": [{ "id": part.id, "quantity": half }, { "id": part.id, "quantity": 1 }] }),
+        )
+        .await;
+    let text = error_text(&cart);
+    assert!(text.starts_with("Cart not created."), "{text}");
+    assert!(
+        text.contains(&format!("Only {} on the shelf", part.quantity_available)),
+        "{text}"
+    );
+}
+
+#[tokio::test]
+async fn repeated_lines_over_the_per_part_maximum_are_refused_not_clamped() {
+    let store = start(StoreConfig::default()).await;
+    let part = first_part(StockStatus::Backorder, 0);
+    let cart = store
+        .call(
+            "create_cart",
+            json!({ "items": [{ "id": part.id, "quantity": 60 }, { "id": part.id, "quantity": 60 }] }),
+        )
+        .await;
+    let text = error_text(&cart);
+    assert!(
+        text.contains("120 times in total") && text.contains("most per part is 99"),
+        "{text}"
+    );
 }
 
 #[tokio::test]
