@@ -8,8 +8,8 @@ use serde_json::{Map, Value, json};
 
 use crate::error::{Error, Result, ShapeProblem};
 use crate::mcp::{McpClient, ToolOutput};
-use crate::metrics::{Summary, normalize, rank_of, summarize};
-use crate::queries::Query;
+use crate::metrics::{Summary, normalize, rank_of, share, summarize};
+use crate::queries::{NO_MATCH_KIND, Query};
 
 /// Keys under which a search result list is looked up, in order.
 const LIST_KEYS: [&str; 4] = ["results", "products", "items", "hits"];
@@ -53,7 +53,22 @@ pub struct QueryResult {
     pub error: Option<String>,
 }
 
-/// Scores for all queries, per kind and overall, with the per-query detail.
+/// What the search tool did with the queries it has no answer for. Descriptive only: whether a
+/// store should return nothing or a weak guess is a product choice, so nothing here is scored.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NoMatchSummary {
+    /// Number of `no_match` queries.
+    pub n: usize,
+    /// Queries whose call failed.
+    pub errors: usize,
+    /// Queries answered with an empty result list.
+    pub empty_replies: usize,
+    /// Mean number of results returned, over the queries that did not error.
+    pub mean_results_returned: f64,
+}
+
+/// Scores for all queries, per kind and overall, with the per-query detail. The `no_match`
+/// queries are in `queries` and in `no_match`, and in none of the other aggregates.
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolLevelReport {
     /// Scores over every query.
@@ -63,8 +78,24 @@ pub struct ToolLevelReport {
     pub overall_without_filter: Summary,
     /// Scores per query kind.
     pub by_kind: BTreeMap<String, Summary>,
+    /// The abstention queries, which have no right answer to rank; absent when there are none.
+    pub no_match: Option<NoMatchSummary>,
     /// One entry per query.
     pub queries: Vec<QueryResult>,
+}
+
+fn no_match_summary(results: &[&QueryResult]) -> Option<NoMatchSummary> {
+    if results.is_empty() {
+        return None;
+    }
+    let answered: Vec<_> = results.iter().filter(|r| r.error.is_none()).collect();
+    let total: usize = answered.iter().map(|r| r.returned.len()).sum();
+    Some(NoMatchSummary {
+        n: results.len(),
+        errors: results.len() - answered.len(),
+        empty_replies: answered.iter().filter(|r| r.returned.is_empty()).count(),
+        mean_results_returned: share(total, answered.len()),
+    })
 }
 
 /// The list of products in a search reply: the first array under `results`, `products`, `items`
@@ -178,19 +209,25 @@ pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> T
     for query in queries {
         results.push(run_one(mcp, query, options).await);
     }
+    let (no_match, ranked): (Vec<&QueryResult>, Vec<&QueryResult>) =
+        results.iter().partition(|r| r.kind == NO_MATCH_KIND);
     let mut kinds: BTreeMap<&str, Vec<&QueryResult>> = BTreeMap::new();
-    for result in &results {
+    for result in &ranked {
         kinds.entry(result.kind.as_str()).or_default().push(result);
     }
-    let without_filter: Vec<&QueryResult> =
-        results.iter().filter(|r| r.kind != FILTER_KIND).collect();
+    let without_filter: Vec<&QueryResult> = ranked
+        .iter()
+        .copied()
+        .filter(|r| r.kind != FILTER_KIND)
+        .collect();
     ToolLevelReport {
-        overall: summarize(&results.iter().collect::<Vec<_>>()),
+        overall: summarize(&ranked),
         overall_without_filter: summarize(&without_filter),
         by_kind: kinds
             .iter()
             .map(|(kind, rs)| ((*kind).to_owned(), summarize(rs)))
             .collect(),
+        no_match: no_match_summary(&no_match),
         queries: results,
     }
 }

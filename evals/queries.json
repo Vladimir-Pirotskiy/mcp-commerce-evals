@@ -38,5 +38,9 @@
   {"id": "q37", "kind": "filter", "text": "carbon rail saddle under $60", "expected": ["QUI-SD-8038", "ROO-SD-2573"], "search": {"query": "carbon saddle", "max_price_usd": 60}},
   {"id": "q38", "kind": "filter", "text": "in-stock 29in tire under $30", "expected": ["NET-TR-8235", "OAK-TR-9434"], "search": {"query": "tire", "fits": ["29in"], "in_stock_only": true, "max_price_usd": 30}},
   {"id": "q39", "kind": "filter", "text": "any Ferrowick rear light I can buy today", "expected": ["FER-LT-5825", "FER-LT-7106", "FER-LT-7619"], "search": {"query": "rear light", "brand": "Ferrowick", "in_stock_only": true}},
-  {"id": "q40", "kind": "filter", "text": "presta inner tube for 700c, in stock, under $8", "expected": ["GLE-TB-6418", "IRO-TB-5411"], "search": {"query": "inner tube presta", "fits": ["700c"], "in_stock_only": true, "max_price_usd": 8}}
+  {"id": "q40", "kind": "filter", "text": "presta inner tube for 700c, in stock, under $8", "expected": ["GLE-TB-6418", "IRO-TB-5411"], "search": {"query": "inner tube presta", "fits": ["700c"], "in_stock_only": true, "max_price_usd": 8}},
+  {"id": "q41", "kind": "no_match", "text": "a bicycle helmet in size medium", "expected": []},
+  {"id": "q42", "kind": "no_match", "text": "floor pump with a pressure gauge", "expected": []},
+  {"id": "q43", "kind": "no_match", "text": "8-speed cassette for a vintage road bike", "expected": []},
+  {"id": "q44", "kind": "no_match", "text": "26-inch mountain bike tire", "expected": []}
 ]

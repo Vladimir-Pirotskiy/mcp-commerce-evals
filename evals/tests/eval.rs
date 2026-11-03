@@ -65,8 +65,13 @@ fn options() -> Options {
 #[test]
 fn the_queries_file_is_valid_and_every_expected_part_exists() {
     let queries = queries::load(Path::new(QUERIES)).unwrap();
-    assert_eq!(queries.len(), 40);
+    assert_eq!(queries.len(), 44);
     let catalog = demo_catalog();
+    assert_eq!(
+        queries.iter().filter(|q| q.kind == "no_match").count(),
+        4,
+        "four abstention queries"
+    );
     for query in &queries {
         for id in &query.expected {
             assert!(
@@ -620,6 +625,77 @@ async fn a_store_that_ignores_limit_is_scored_on_the_top_k_only() {
     assert_eq!(report.queries[0].returned.len(), 5);
     assert_eq!(report.queries[0].rank, None);
     assert_eq!(report.overall.hit_at_5, 0.0);
+}
+
+fn no_match_query(id: &str, text: &str) -> Query {
+    serde_json::from_value(json!({ "id": id, "kind": "no_match", "text": text, "expected": [] }))
+        .expect("query")
+}
+
+#[tokio::test]
+async fn no_match_queries_have_their_own_row_and_stay_out_of_every_aggregate() {
+    let body = structured(&json!({ "results": [{ "id": "WANTED" }, { "id": "OTHER" }] }));
+    let (server, _) = spawn_mock_mcp(body).await;
+    let mut mcp = connect(&server.base).await;
+    let queries = [
+        query("a", "thing", "WANTED"),
+        no_match_query("n1", "a helmet"),
+        no_match_query("n2", "a pump"),
+    ];
+
+    let report = tool_level::run(&mut mcp, &queries, &options()).await;
+
+    assert_eq!(report.overall.n, 1);
+    assert_eq!(report.overall.hit_at_1, 1.0);
+    assert_eq!(report.overall_without_filter.n, 1);
+    assert!(!report.by_kind.contains_key("no_match"));
+    let no_match = report.no_match.clone().expect("a no_match row");
+    assert_eq!((no_match.n, no_match.errors), (2, 0));
+    assert_eq!(no_match.empty_replies, 0);
+    assert_eq!(no_match.mean_results_returned, 2.0);
+    assert_eq!(report.queries.len(), 3, "the per-query detail keeps them");
+    let table = mcp_commerce_evals::report::tool_level_markdown(&report);
+    assert!(table.contains("no_match"), "{table}");
+    assert!(
+        !table.contains("a helmet |"),
+        "not listed as a ranking miss: {table}"
+    );
+}
+
+#[tokio::test]
+async fn a_file_without_no_match_queries_reports_no_such_row() {
+    let body = structured(&json!({ "results": [{ "id": "WANTED" }] }));
+    let (server, _) = spawn_mock_mcp(body).await;
+    let mut mcp = connect(&server.base).await;
+
+    let report = tool_level::run(&mut mcp, &[query("a", "t", "WANTED")], &options()).await;
+
+    assert!(report.no_match.is_none());
+}
+
+#[tokio::test]
+async fn at_assistant_level_a_no_match_query_is_correct_only_when_the_answer_is_none() {
+    let store = spawn_store().await;
+    let script = vec![
+        final_answer("We do not sell those.\nANSWER: none"),
+        final_answer("Try this.\nANSWER: FER-CH-4296"),
+    ];
+    let (api_server, _) = spawn_mock(script).await;
+    let api = client(&api_server, "k");
+    let mut mcp = connect(&store.base).await;
+    let queries = [
+        no_match_query("n1", "a helmet"),
+        no_match_query("n2", "a pump"),
+    ];
+
+    let report = assistant::run(&api, &mut mcp, &queries, 2, |_| Ok(()))
+        .await
+        .unwrap();
+
+    assert!(report.queries[0].correct);
+    assert!(!report.queries[1].correct);
+    assert_eq!(report.overall.answer_accuracy, 0.5);
+    assert_eq!(report.by_kind["no_match"].n, 2);
 }
 
 #[tokio::test]

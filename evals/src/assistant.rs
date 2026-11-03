@@ -271,11 +271,17 @@ pub fn committed_answer(reply: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_owned())
 }
 
-/// Whether a committed answer is exactly one of the expected ids (after normalising both).
+/// Whether a committed answer is exactly one of the expected ids (after normalising both). A
+/// query with nothing expected (kind `no_match`) is answered correctly only by `none`.
 #[must_use]
 pub fn is_correct(committed: Option<&str>, expected: &[String]) -> bool {
     committed.is_some_and(|value| {
-        value != ANSWER_NONE && expected.iter().any(|id| normalize(id) == normalize(value))
+        let said_none = normalize(value) == ANSWER_NONE;
+        if expected.is_empty() {
+            said_none
+        } else {
+            !said_none && expected.iter().any(|id| normalize(id) == normalize(value))
+        }
     })
 }
 
@@ -605,6 +611,14 @@ mod tests {
         assert_eq!(committed_answer("ANSWER: X-1\nand more words"), None);
         assert_eq!(committed_answer("ANSWER:"), None);
         assert_eq!(committed_answer(""), None);
+    }
+
+    #[test]
+    fn with_nothing_expected_only_none_is_correct() {
+        assert!(is_correct(Some("none"), &[]));
+        assert!(is_correct(Some("None"), &[]));
+        assert!(!is_correct(Some("ALD-CH-1002"), &[]));
+        assert!(!is_correct(None, &[]));
     }
 
     #[test]

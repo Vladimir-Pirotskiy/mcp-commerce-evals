@@ -10,6 +10,7 @@ use crate::assistant::{AssistantReport, AssistantSummary};
 use crate::error::{Error, Result};
 use crate::meta::Meta;
 use crate::metrics::{Interval, Summary};
+use crate::queries::NO_MATCH_KIND;
 use crate::tool_level::ToolLevelReport;
 
 /// Everything one run produced; this is what `--out` writes.
@@ -95,10 +96,18 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
         "**all except filter**",
         &report.overall_without_filter,
     ));
+    if let Some(no_match) = &report.no_match {
+        let _ = write!(
+            out,
+            "\n**no_match** ({} queries with no right answer, left out of every row above): {} \
+             returned no results, {:.1} results on average, {} errors.\n",
+            no_match.n, no_match.empty_replies, no_match.mean_results_returned, no_match.errors
+        );
+    }
     let misses: Vec<_> = report
         .queries
         .iter()
-        .filter(|q| q.rank != Some(1))
+        .filter(|q| q.rank != Some(1) && q.kind != NO_MATCH_KIND)
         .collect();
     if !misses.is_empty() {
         out.push_str("\nNot ranked first:\n\n| id | query | rank | expected | top results |\n|---|---|---:|---|---|\n");

@@ -218,7 +218,23 @@ const RULES: &[(&str, Rule)] = &[
         ) && on_shelf(p)
             && p.price_usd < 8.0
     }),
+    // The no_match queries: nothing in the catalog satisfies what they ask for, so each rule
+    // selects no part. q41 and q42 name things the catalog has no category for; q43 and q44 are
+    // near misses, a real category with an attribute value it never takes.
+    ("q41", |p| mentions(p, "helmet")),
+    ("q42", |p| mentions(p, "pump")),
+    ("q43", |p| {
+        is(p, Category::Cassette, &[("speed", "8-speed")])
+    }),
+    ("q44", |p| is(p, Category::Tire, &[("wheel_size", "26in")])),
 ];
+
+/// Whether the part's title or description contains `word`, ignoring case.
+fn mentions(part: &Part, word: &str) -> bool {
+    format!("{} {}", part.title, part.description)
+        .to_lowercase()
+        .contains(word)
+}
 
 fn derived(catalog: &Catalog, rule: Rule) -> BTreeSet<String> {
     catalog
@@ -263,4 +279,27 @@ fn every_query_has_exactly_one_rule() {
             query.id
         );
     }
+}
+
+#[test]
+fn no_match_queries_match_no_part_by_their_stated_attributes() {
+    let queries = queries::load(Path::new(QUERIES)).unwrap();
+    let catalog = demo_catalog();
+    let no_match: Vec<_> = queries.iter().filter(|q| q.kind == "no_match").collect();
+    assert_eq!(no_match.len(), 4);
+    for query in no_match {
+        let (_, rule) = RULES.iter().find(|(id, _)| *id == query.id).unwrap();
+        assert!(query.expected.is_empty(), "{}", query.id);
+        assert_eq!(derived(&catalog, *rule), BTreeSet::new(), "{}", query.id);
+    }
+}
+
+#[test]
+fn the_near_miss_no_match_queries_are_not_vacuous() {
+    // q43 and q44 ask for a category the catalog does sell, with a value no part has; the same
+    // category and a neighbouring value do exist, so the empty set comes from the attribute.
+    let catalog = demo_catalog();
+    let some = |rule: Rule| !derived(&catalog, rule).is_empty();
+    assert!(some(|p| is(p, Category::Cassette, &[("speed", "9-speed")])));
+    assert!(some(|p| is(p, Category::Tire, &[("wheel_size", "27.5in")])));
 }

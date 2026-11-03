@@ -17,13 +17,18 @@ pub struct Query {
     pub kind: String,
     /// What the buyer says. The assistant-level run sends this text as the user message.
     pub text: String,
-    /// Part ids that count as a right answer; the best rank among them is scored.
+    /// Part ids that count as a right answer; the best rank among them is scored. Empty exactly
+    /// when `kind` is `no_match`.
     pub expected: Vec<String>,
     /// Arguments for the search tool in the tool-level run. Defaults to `{"query": text}`;
     /// give it when the buyer's constraints are structured filters.
     #[serde(default)]
     pub search: Option<Value>,
 }
+
+/// The kind of a query the store has no answer for: its `expected` list must be empty, and the
+/// right behaviour is to return nothing relevant (tool level) or to answer `none` (assistant).
+pub const NO_MATCH_KIND: &str = "no_match";
 
 /// Where the shipped queries file is, relative to the repository root.
 const SHIPPED_QUERIES: &str = "evals/queries.json";
@@ -102,9 +107,13 @@ fn validate(queries: &[Query]) -> Result<()> {
         if !seen.insert(q.id.as_str()) {
             return Err(Error::Input(format!("duplicate query id {}", q.id)));
         }
-        if q.expected.is_empty() || q.text.trim().is_empty() {
+        if q.text.trim().is_empty() {
+            return Err(Error::Input(format!("query {} needs text", q.id)));
+        }
+        if (q.kind == NO_MATCH_KIND) != q.expected.is_empty() {
             return Err(Error::Input(format!(
-                "query {} needs text and expected ids",
+                "query {}: expected ids are required, except for kind {NO_MATCH_KIND:?}, \
+                 which needs an empty list",
                 q.id
             )));
         }
@@ -156,6 +165,17 @@ mod tests {
     }
 
     #[test]
+    fn empty_expectations_are_valid_only_for_the_no_match_kind() {
+        let abstain = r#"[{"id":"a","kind":"no_match","text":"helmet","expected":[]}]"#;
+        assert!(parse(abstain).is_ok());
+        let wrong_kind = r#"[{"id":"a","kind":"typo","text":"helmet","expected":[]}]"#;
+        let error = parse(wrong_kind).unwrap_err().to_string();
+        assert!(error.contains("no_match"), "{error}");
+        let answered = r#"[{"id":"a","kind":"no_match","text":"t","expected":["X"]}]"#;
+        assert!(parse(answered).is_err());
+    }
+
+    #[test]
     fn a_minimal_file_loads() {
         let queries = parse(r#"[{"id":"a","kind":"k","text":"chain","expected":["X-1"]}]"#);
         assert_eq!(queries.unwrap().len(), 1);
@@ -167,6 +187,7 @@ mod tests {
                       {"id":"a","kind":"k","text":"t","expected":["X"]}]"#;
         assert!(parse(dup).is_err());
         assert!(parse(r#"[{"id":"a","kind":"k","text":"t","expected":[]}]"#).is_err());
+        assert!(parse(r#"[{"id":"a","kind":"k","text":" ","expected":["X"]}]"#).is_err());
         assert!(
             parse(r#"[{"id":"a","kind":"k","text":"t","expected":["X"],"search":"q"}]"#).is_err()
         );
