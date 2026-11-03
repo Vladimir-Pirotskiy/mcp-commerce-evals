@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, ValueEnum};
@@ -43,6 +44,9 @@ struct Args {
     /// Model for the assistant-level run.
     #[arg(long, default_value = assistant::DEFAULT_MODEL)]
     model: String,
+    /// Seconds before an HTTP request to the store or the model API gives up.
+    #[arg(long, default_value_t = 60)]
+    timeout_secs: u64,
     /// Most model turns per query in the assistant-level run.
     #[arg(long, default_value_t = 8)]
     max_turns: u32,
@@ -74,7 +78,7 @@ async fn run(args: Args) -> Result<()> {
         }
         None => None,
     };
-    let mut mcp = McpClient::connect(&args.url).await?;
+    let mut mcp = McpClient::connect(&args.url, Duration::from_secs(args.timeout_secs)).await?;
     let options = tool_level::Options {
         search_tool: args.search_tool,
         top_k: args.top_k,

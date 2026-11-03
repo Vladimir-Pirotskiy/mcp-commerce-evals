@@ -1,14 +1,14 @@
 //! Tool-level eval: call the store's search tool for every query and score the ranking.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use crate::error::Result;
+use crate::error::{Error, Result, ShapeProblem};
 use crate::mcp::{McpClient, ToolOutput};
-use crate::metrics::{Summary, rank_of, summarize};
+use crate::metrics::{Summary, normalize, rank_of, summarize};
 use crate::queries::Query;
 
 /// Keys under which a search result list is looked up, in order.
@@ -36,8 +36,9 @@ pub struct QueryResult {
     pub text: String,
     /// Part ids that count as right.
     pub expected: Vec<String>,
-    /// Part ids the store returned, best first.
-    pub returned: Vec<String>,
+    /// Part ids the store returned, best first, at most `top_k`; `None` marks an entry without
+    /// a recognisable id.
+    pub returned: Vec<Option<String>>,
     /// 1-based rank of the best expected id among the results, if any.
     pub rank: Option<usize>,
     /// Round-trip time of the search call in milliseconds.
@@ -57,25 +58,38 @@ pub struct ToolLevelReport {
     pub queries: Vec<QueryResult>,
 }
 
-/// Ids of the products in a search reply: the first list under `results`, `products`, `items` or
-/// `hits`, read from `structuredContent` or else from the text block, taking each entry's `id`,
-/// `sku`, `part_number` or `product_id`.
-pub fn result_ids(output: &ToolOutput) -> Vec<String> {
+/// The list of products in a search reply: the first array under `results`, `products`, `items`
+/// or `hits`, read from `structuredContent` or else from the JSON text block.
+fn product_list(output: &ToolOutput) -> Result<Vec<Value>> {
     let parsed;
     let body = match &output.structured {
         Some(value) => value,
         None => {
-            parsed = serde_json::from_str::<Value>(&output.text).unwrap_or(Value::Null);
+            parsed = serde_json::from_str::<Value>(&output.text)
+                .map_err(|_| Error::Shape(ShapeProblem::NotJson))?;
             &parsed
         }
     };
-    let Some(list) = LIST_KEYS.iter().find_map(|key| body.get(key)?.as_array()) else {
-        return Vec::new();
-    };
-    list.iter()
-        .filter_map(|entry| ID_KEYS.iter().find_map(|key| entry.get(key)?.as_str()))
-        .map(str::to_owned)
-        .collect()
+    LIST_KEYS
+        .iter()
+        .find_map(|key| body.get(key)?.as_array())
+        .cloned()
+        .ok_or(Error::Shape(ShapeProblem::NoResultList))
+}
+
+/// Ids of the first `top_k` products in a search reply, best first, so a store that ignores
+/// `limit` cannot change the score. An entry with no `id`, `sku`, `part_number` or `product_id`
+/// stays in the list as `None`, because it still occupies a rank. A repeated id keeps only its
+/// first position. A reply that is not a recognisable product list is an error.
+pub fn result_ids(output: &ToolOutput, top_k: usize) -> Result<Vec<Option<String>>> {
+    let mut seen = HashSet::new();
+    Ok(product_list(output)?
+        .iter()
+        .take(top_k)
+        .map(|entry| ID_KEYS.iter().find_map(|key| entry.get(key)?.as_str()))
+        .filter(|id| id.is_none_or(|id| seen.insert(normalize(id))))
+        .map(|id| id.map(str::to_owned))
+        .collect())
 }
 
 fn arguments(query: &Query, top_k: usize) -> Value {
@@ -95,7 +109,10 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
     let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
     let (returned, error) = match outcome {
         Ok(output) if output.is_error => (Vec::new(), Some(output.text)),
-        Ok(output) => (result_ids(&output), None),
+        Ok(output) => match result_ids(&output, options.top_k) {
+            Ok(ids) => (ids, None),
+            Err(e) => (Vec::new(), Some(e.to_string())),
+        },
         Err(e) => (Vec::new(), Some(e.to_string())),
     };
     QueryResult {
@@ -149,13 +166,57 @@ mod tests {
         }
     }
 
+    fn ids(output: &ToolOutput, top_k: usize) -> Vec<Option<String>> {
+        result_ids(output, top_k).unwrap()
+    }
+
+    fn some(ids: &[&str]) -> Vec<Option<String>> {
+        ids.iter().map(|id| Some((*id).to_owned())).collect()
+    }
+
     #[test]
-    fn ids_come_from_structured_content_or_the_text_block() {
+    fn reads_ids_from_structured_content_or_the_text_block() {
         let structured = json!({ "results": [{ "id": "A-1" }, { "id": "B-2" }] });
-        assert_eq!(result_ids(&output(Some(structured), "")), ["A-1", "B-2"]);
-        let text = r#"{"products":[{"sku":"X9"},{"id":"Y8"},{"name":"no id"}]}"#;
-        assert_eq!(result_ids(&output(None, text)), ["X9", "Y8"]);
-        assert!(result_ids(&output(None, "not json")).is_empty());
+        assert_eq!(
+            ids(&output(Some(structured), ""), 10),
+            some(&["A-1", "B-2"])
+        );
+        let text = r#"{"products":[{"sku":"X9"},{"id":"Y8"}]}"#;
+        assert_eq!(ids(&output(None, text), 10), some(&["X9", "Y8"]));
+    }
+
+    #[test]
+    fn truncates_results_to_top_k() {
+        let body = json!({ "results": [{ "id": "A" }, { "id": "B" }, { "id": "C" }] });
+        assert_eq!(ids(&output(Some(body), ""), 2), some(&["A", "B"]));
+    }
+
+    #[test]
+    fn keeps_only_the_first_position_of_a_repeated_id() {
+        let body = json!({ "results": [{ "id": "A-1" }, { "id": "a1" }, { "id": "B" }] });
+        assert_eq!(ids(&output(Some(body), ""), 10), some(&["A-1", "B"]));
+    }
+
+    #[test]
+    fn an_entry_without_an_id_keeps_its_rank_position() {
+        let body = json!({ "results": [{ "name": "no id" }, { "id": "B" }] });
+        assert_eq!(
+            ids(&output(Some(body), ""), 10),
+            [None, Some("B".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_reply_without_a_known_list_key_is_an_error() {
+        let body = json!({ "matches": [{ "id": "A" }] });
+        let error = result_ids(&output(Some(body), ""), 10).unwrap_err();
+        assert!(matches!(error, Error::Shape(ShapeProblem::NoResultList)));
+    }
+
+    #[test]
+    fn text_that_is_not_json_is_an_error() {
+        let error = result_ids(&output(None, "not json"), 10).unwrap_err();
+        assert!(matches!(error, Error::Shape(ShapeProblem::NotJson)));
     }
 
     #[test]

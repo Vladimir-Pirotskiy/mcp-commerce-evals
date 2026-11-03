@@ -4,6 +4,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -19,6 +20,7 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
+const TIMEOUT: Duration = Duration::from_secs(10);
 const QUERIES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/queries.json");
 
 /// Stops its server task when dropped.
@@ -41,6 +43,12 @@ async fn spawn_store() -> Server {
         let _ = serve(listener, router).await;
     });
     Server { base, task }
+}
+
+async fn connect(base: &str) -> McpClient {
+    McpClient::connect(&format!("{base}/mcp"), TIMEOUT)
+        .await
+        .expect("connect")
 }
 
 fn options() -> Options {
@@ -81,9 +89,7 @@ fn the_queries_file_is_valid_and_every_expected_part_exists() {
 async fn tool_level_eval_against_the_in_process_store() {
     let store = spawn_store().await;
     let queries = queries::load(Path::new(QUERIES)).unwrap();
-    let mut mcp = McpClient::connect(&format!("{}/mcp", store.base))
-        .await
-        .unwrap();
+    let mut mcp = connect(&store.base).await;
 
     let report = tool_level::run(&mut mcp, &queries, &options())
         .await
@@ -114,9 +120,7 @@ async fn tool_level_eval_against_the_in_process_store() {
 async fn a_missing_search_tool_is_reported_per_query_not_as_a_crash() {
     let store = spawn_store().await;
     let queries = queries::load(Path::new(QUERIES)).unwrap();
-    let mut mcp = McpClient::connect(&format!("{}/mcp", store.base))
-        .await
-        .unwrap();
+    let mut mcp = connect(&store.base).await;
     let wrong = Options {
         search_tool: "no_such_tool".to_owned(),
         top_k: 10,
@@ -217,9 +221,7 @@ async fn the_model_searches_through_the_store_and_names_the_part() {
         "test-model",
         &api_server.base,
     );
-    let mut mcp = McpClient::connect(&format!("{}/mcp", store.base))
-        .await
-        .unwrap();
+    let mut mcp = connect(&store.base).await;
     let tools = api_tools(&mcp.list_tools().await.unwrap());
 
     let result = assistant::answer(
@@ -265,9 +267,7 @@ async fn an_api_error_is_recorded_without_leaking_the_key() {
         "test-model",
         &api_server.base,
     );
-    let mut mcp = McpClient::connect(&format!("{}/mcp", store.base))
-        .await
-        .unwrap();
+    let mut mcp = connect(&store.base).await;
 
     let result = assistant::answer(&api, &mut mcp, &[], &query("a", "chain", "X-1"), 8).await;
 
@@ -293,9 +293,7 @@ async fn the_assistant_report_scores_each_query_and_gives_up_after_the_turn_limi
         "test-model",
         &api_server.base,
     );
-    let mut mcp = McpClient::connect(&format!("{}/mcp", store.base))
-        .await
-        .unwrap();
+    let mut mcp = connect(&store.base).await;
     let queries = [
         query("a", "chain one", "FER-CH-4296"),
         query("b", "chain two", "FER-CH-4296"),
@@ -316,4 +314,84 @@ async fn the_assistant_report_scores_each_query_and_gives_up_after_the_turn_limi
             .unwrap()
             .contains("no final answer after 2 turns")
     );
+}
+
+/// A stand-in MCP server whose `tools/call` always returns `call_result`.
+async fn spawn_mock_mcp(call_result: Value) -> Server {
+    async fn rpc(
+        State(result): State<Arc<Value>>,
+        Json(body): Json<Value>,
+    ) -> (StatusCode, Json<Value>) {
+        let reply = match body["method"].as_str() {
+            Some("initialize") => json!({
+                "protocolVersion": "2025-03-26",
+                "serverInfo": { "name": "mock-store", "version": "9.9" }
+            }),
+            Some("tools/call") => (*result).clone(),
+            _ => return (StatusCode::ACCEPTED, Json(Value::Null)),
+        };
+        (
+            StatusCode::OK,
+            Json(json!({ "jsonrpc": "2.0", "id": body["id"], "result": reply })),
+        )
+    }
+    let router = Router::new()
+        .route("/mcp", post(rpc))
+        .with_state(Arc::new(call_result));
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
+    let base = format!("http://{}", listener.local_addr().expect("local address"));
+    let task = tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    Server { base, task }
+}
+
+fn structured(body: &Value) -> Value {
+    json!({ "content": [], "structuredContent": body })
+}
+
+#[tokio::test]
+async fn a_store_that_ignores_limit_is_scored_on_the_top_k_only() {
+    let hits: Vec<_> = (1..=9)
+        .map(|i| json!({ "id": format!("P-{i}") }))
+        .chain([json!({ "id": "WANTED" })])
+        .collect();
+    let server = spawn_mock_mcp(structured(&json!({ "results": hits }))).await;
+    let mut mcp = connect(&server.base).await;
+    let queries = [query("a", "thing", "WANTED")];
+    let options = Options {
+        top_k: 5,
+        ..options()
+    };
+
+    let report = tool_level::run(&mut mcp, &queries, &options).await.unwrap();
+
+    assert_eq!(report.queries[0].returned.len(), 5);
+    assert_eq!(report.queries[0].rank, None);
+    assert_eq!(report.overall.hit_at_5, 0.0);
+}
+
+#[tokio::test]
+async fn an_unrecognised_result_shape_counts_as_an_error() {
+    let server = spawn_mock_mcp(structured(&json!({ "matches": [{ "id": "WANTED" }] }))).await;
+    let mut mcp = connect(&server.base).await;
+    let queries = [query("a", "thing", "WANTED")];
+
+    let report = tool_level::run(&mut mcp, &queries, &options())
+        .await
+        .unwrap();
+
+    assert_eq!(report.overall.errors, 1);
+    assert!(report.queries[0].error.is_some());
+}
+
+#[tokio::test]
+async fn the_handshake_keeps_the_server_info_and_negotiated_protocol() {
+    let server = spawn_mock_mcp(json!({})).await;
+    let mcp = connect(&server.base).await;
+
+    let handshake = mcp.handshake();
+
+    assert_eq!(handshake.server_info["name"], "mock-store");
+    assert_eq!(handshake.protocol_version, "2025-03-26");
 }

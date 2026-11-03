@@ -13,11 +13,14 @@ pub fn normalize(id: &str) -> String {
 }
 
 /// 1-based position of the first returned id that is expected.
-pub fn rank_of(returned: &[String], expected: &[String]) -> Option<usize> {
+pub fn rank_of(returned: &[Option<String>], expected: &[String]) -> Option<usize> {
     let wanted: Vec<String> = expected.iter().map(|id| normalize(id)).collect();
     returned
         .iter()
-        .position(|id| wanted.contains(&normalize(id)))
+        .position(|id| {
+            id.as_ref()
+                .is_some_and(|id| wanted.contains(&normalize(id)))
+        })
         .map(|i| i + 1)
 }
 
@@ -111,10 +114,10 @@ mod tests {
 
     #[test]
     fn rank_ignores_case_and_punctuation_and_takes_the_best_expected_id() {
-        let returned = ["B-2".to_owned(), "a-1".to_owned(), "c-3".to_owned()];
-        assert_eq!(rank_of(&returned, &["A1".to_owned()]), Some(2));
+        let returned = [Some("B-2".to_owned()), None, Some("a-1".to_owned())];
+        assert_eq!(rank_of(&returned, &["A1".to_owned()]), Some(3));
         assert_eq!(
-            rank_of(&returned, &["c 3".to_owned(), "b2".to_owned()]),
+            rank_of(&returned, &["a 1".to_owned(), "b2".to_owned()]),
             Some(1)
         );
         assert_eq!(rank_of(&returned, &["z-9".to_owned()]), None);

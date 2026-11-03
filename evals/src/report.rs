@@ -62,7 +62,7 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
                     .returned
                     .iter()
                     .take(3)
-                    .cloned()
+                    .map(|id| id.as_deref().unwrap_or("(no id)"))
                     .collect::<Vec<_>>()
                     .join(", "),
             };
