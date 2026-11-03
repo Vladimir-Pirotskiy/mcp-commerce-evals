@@ -3,9 +3,12 @@
 
 use std::path::Path;
 
+const WORKFLOWS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../.github/workflows");
+
 fn workflow(name: &str) -> String {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.github/workflows");
-    std::fs::read_to_string(path.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"))
+    let path = Path::new(WORKFLOWS).join(name);
+    assert!(path.exists(), "{name} is missing");
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
 /// The text of one top-level job: from its `  name:` line to the next job.
@@ -44,4 +47,54 @@ fn advisories_are_their_own_job_that_cannot_block_a_pull_request() {
         advisories.contains("continue-on-error: ${{ github.event_name != 'schedule' }}"),
         "only a scheduled run may fail on an advisory:\n{advisories}"
     );
+}
+
+#[test]
+fn every_action_is_pinned_by_commit_sha_with_a_version_comment() {
+    for name in ["ci.yml", "release.yml"] {
+        let text = workflow(name);
+        let uses: Vec<&str> = text
+            .lines()
+            .filter_map(|line| line.split_once("uses: ").map(|(_, rest)| rest))
+            .collect();
+        assert!(!uses.is_empty(), "{name} uses no actions");
+        for entry in uses {
+            let (action, comment) = entry.split_once(" # ").unwrap_or((entry, ""));
+            let sha = action.rsplit_once('@').map_or("", |(_, sha)| sha);
+            assert!(
+                sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()),
+                "{name}: {action} is not pinned by a full commit sha"
+            );
+            assert!(
+                comment.starts_with('v'),
+                "{name}: {action} has no version comment"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_version_tag_builds_linux_binaries_and_publishes_a_release_with_generated_notes() {
+    let release = workflow("release.yml");
+    assert!(
+        release.contains("\n  push:\n    tags:\n      - \"v*\"\n"),
+        "{release}"
+    );
+    assert!(release.contains("gh release create"), "{release}");
+    assert!(release.contains("--generate-notes"), "{release}");
+    assert!(release.contains("--release"), "{release}");
+    assert!(release.contains("--locked"), "{release}");
+}
+
+#[test]
+fn only_the_release_job_may_write_to_the_repository() {
+    let ci = workflow("ci.yml");
+    assert!(!ci.contains("write"), "ci.yml asks for a write permission");
+    let release = workflow("release.yml");
+    assert!(
+        release.contains("\npermissions:\n  contents: read\n"),
+        "the workflow default must be read-only"
+    );
+    assert_eq!(release.matches("contents: write").count(), 1, "{release}");
+    assert!(job(&release, "release").contains("permissions:\n      contents: write\n"));
 }
