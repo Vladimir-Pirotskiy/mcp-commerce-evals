@@ -784,6 +784,22 @@ async fn cli_exits_zero_and_writes_the_report_when_gates_hold() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn cli_refuses_a_top_k_above_the_search_tools_limit_before_any_query() {
+    let store = spawn_store().await;
+    let out = scratch_file("top-k");
+
+    let (code, stderr) = run_cli(&store.base, &["--top-k", "26"], &out).await;
+
+    assert_eq!(code, 1, "{stderr}");
+    assert!(stderr.contains("--top-k 26"), "{stderr}");
+    assert!(stderr.contains("25"), "{stderr}");
+    assert!(!out.exists(), "no query ran, so no report was written");
+
+    let (code, stderr) = run_cli(&store.base, &["--top-k", "25"], &out).await;
+    assert_eq!(code, 0, "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn cli_exits_3_after_writing_the_json_when_a_gate_is_not_met() {
     let store = spawn_store().await;
     let out = scratch_file("gate");

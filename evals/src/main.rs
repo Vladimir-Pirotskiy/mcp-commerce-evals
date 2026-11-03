@@ -22,7 +22,8 @@ enum Provider {
 
 /// Evaluate an MCP store: tool-level retrieval metrics, plus an optional assistant-level run.
 ///
-/// Exit status: 0 on success, 1 when the run could not complete, 2 when any query errored, 3 when
+/// Exit status: 0 on success, 1 when the run could not complete (this includes a --top-k above
+/// the `limit` maximum the search tool advertises, refused before any query), 2 when any query errored, 3 when
 /// a --min-* gate was not met (the report is written first). A run whose report is incomplete
 /// is a failure to complete, so it exits 1.
 #[derive(Parser)]
@@ -138,6 +139,7 @@ async fn run(args: Args) -> Result<u8> {
     let mut mcp = McpClient::connect(&args.url, timeout).await?;
     let repeat = usize::try_from(args.repeat).unwrap_or(usize::MAX);
     let top_k = args.top_k as usize;
+    tool_level::check_top_k(&mut mcp, &args.search_tool, top_k).await?;
     let options = tool_level::Options {
         search_tool: args.search_tool.clone(),
         top_k,

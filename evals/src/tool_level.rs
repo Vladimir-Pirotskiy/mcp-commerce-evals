@@ -157,6 +157,36 @@ pub fn result_ids(output: &ToolOutput, top_k: usize) -> Result<Vec<Option<String
         .collect())
 }
 
+/// The `maximum` the named tool's input schema sets on `limit`, when it sets one.
+#[must_use]
+pub fn limit_maximum(tools: &[Value], tool: &str) -> Option<u64> {
+    tools
+        .iter()
+        .find(|t| t["name"] == tool)?
+        .pointer("/inputSchema/properties/limit/maximum")?
+        .as_u64()
+}
+
+/// Fails when `top_k` is above the `limit` the search tool advertises in `tools/list`, so a
+/// run does not turn into one error per query. A store that lists no such bound, does not list
+/// the tool or cannot list tools at all is not checked here: its queries report their own errors.
+///
+/// # Errors
+///
+/// Fails with a message naming both numbers when `top_k` exceeds the advertised maximum.
+pub async fn check_top_k(mcp: &mut McpClient, search_tool: &str, top_k: usize) -> Result<()> {
+    let Ok(tools) = mcp.list_tools().await else {
+        return Ok(());
+    };
+    match limit_maximum(&tools, search_tool) {
+        Some(max) if top_k as u64 > max => Err(Error::Input(format!(
+            "--top-k {top_k} is above the maximum `limit` of {max} that {search_tool} accepts \
+             (from its inputSchema); pass --top-k {max} or lower"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 fn arguments(query: &Query, top_k: usize) -> Value {
     let mut args = match &query.search {
         Some(Value::Object(map)) => map.clone(),
@@ -332,6 +362,18 @@ mod tests {
     fn text_that_is_not_json_is_an_error() {
         let error = result_ids(&output(None, "not json"), 10).unwrap_err();
         assert!(matches!(error, Error::Shape(ShapeProblem::NotJson)));
+    }
+
+    #[test]
+    fn reads_the_limit_maximum_of_the_named_tool() {
+        let tools = [
+            json!({ "name": "other", "inputSchema": { "properties": { "limit": { "maximum": 3 } } } }),
+            json!({ "name": "search", "inputSchema": { "properties": { "limit": { "maximum": 25 } } } }),
+            json!({ "name": "bare", "inputSchema": { "properties": {} } }),
+        ];
+        assert_eq!(limit_maximum(&tools, "search"), Some(25));
+        assert_eq!(limit_maximum(&tools, "bare"), None);
+        assert_eq!(limit_maximum(&tools, "missing"), None);
     }
 
     #[test]
