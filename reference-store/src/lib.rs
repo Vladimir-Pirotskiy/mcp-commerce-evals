@@ -14,7 +14,7 @@ mod rate_limit;
 mod tools;
 
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -45,7 +45,7 @@ pub struct StoreConfig {
     /// otherwise; requests without an `Origin` are not affected.
     pub allowed_hosts: Vec<AllowedHost>,
     /// Requests per client per minute on `/mcp`.
-    pub requests_per_minute: u32,
+    pub requests_per_minute: NonZeroU32,
     /// Name clients by `X-Forwarded-For` instead of the socket address (behind a proxy only).
     pub trust_forwarded_for: bool,
     /// With `trust_forwarded_for`: how many proxies you run in front of the store. The client is
@@ -56,21 +56,24 @@ pub struct StoreConfig {
     /// overflow budget of ten times a client's limit (see the `rate_limit` module notes).
     pub max_tracked_clients: usize,
     /// Most `/mcp` requests handled at once; a request over the cap gets 503 with `Retry-After`.
-    pub max_in_flight: usize,
+    pub max_in_flight: NonZeroUsize,
     /// How long one `/mcp` request may take before it gets 504.
     pub request_timeout: Duration,
 }
+
+const DEFAULT_REQUESTS_PER_MINUTE: NonZeroU32 = NonZeroU32::new(120).expect("120 is not zero");
+const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = NonZeroUsize::new(256).expect("256 is not zero");
 
 impl Default for StoreConfig {
     fn default() -> Self {
         Self {
             checkout_url: "https://demo-shop.example/checkout".to_owned(),
             allowed_hosts: Vec::new(),
-            requests_per_minute: 120,
+            requests_per_minute: DEFAULT_REQUESTS_PER_MINUTE,
             trust_forwarded_for: false,
             trusted_proxy_hops: NonZeroUsize::MIN,
             max_tracked_clients: rate_limit::MAX_CLIENTS,
-            max_in_flight: 256,
+            max_in_flight: DEFAULT_MAX_IN_FLIGHT,
             request_timeout: Duration::from_secs(30),
         }
     }
@@ -122,7 +125,7 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     );
     let limit = LimitState {
         limiter: Arc::new(RateLimiter::with_capacity(
-            config.requests_per_minute,
+            config.requests_per_minute.get(),
             Duration::from_secs(60),
             config.max_tracked_clients,
         )),
@@ -133,7 +136,7 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     let mcp = Router::new()
         .nest_service("/mcp", service)
         .layer(from_fn_with_state(
-            GuardState::new(config.max_in_flight, config.request_timeout),
+            GuardState::new(config.max_in_flight.get(), config.request_timeout),
             guard::guard,
         ))
         .layer(from_fn_with_state(limit, rate_limit::limit));

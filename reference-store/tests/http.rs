@@ -1,5 +1,6 @@
 //! The store over real HTTP: the four tools, their schemas, the rate limit and the host check.
 
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use catalog::{StockStatus, demo_catalog};
@@ -338,7 +339,7 @@ async fn repeated_lines_over_the_per_part_maximum_are_refused_not_clamped() {
 #[tokio::test]
 async fn a_client_over_the_limit_gets_429_with_retry_after() {
     let store = start(StoreConfig {
-        requests_per_minute: 3,
+        requests_per_minute: NonZeroU32::new(3).unwrap(),
         ..StoreConfig::default()
     })
     .await;
@@ -456,7 +457,7 @@ async fn a_request_body_over_64_kib_is_refused() {
 
 fn behind_a_proxy(requests_per_minute: u32) -> StoreConfig {
     StoreConfig {
-        requests_per_minute,
+        requests_per_minute: NonZeroU32::new(requests_per_minute).expect("a non-zero budget"),
         trust_forwarded_for: true,
         ..StoreConfig::default()
     }
@@ -512,7 +513,7 @@ async fn an_unparseable_forwarded_address_falls_back_to_the_socket_peer() {
 #[tokio::test]
 async fn forwarded_addresses_are_ignored_unless_trusted() {
     let store = start(StoreConfig {
-        requests_per_minute: 1,
+        requests_per_minute: NonZeroU32::new(1).unwrap(),
         ..StoreConfig::default()
     })
     .await;

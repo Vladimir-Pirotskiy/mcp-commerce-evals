@@ -1,7 +1,7 @@
 //! `reference-store`: serve the demo bicycle-parts catalog over MCP.
 
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -23,8 +23,8 @@ struct Args {
     #[arg(long = "allowed-host")]
     allowed_hosts: Vec<AllowedHost>,
     /// Requests per client per minute on /mcp.
-    #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u32).range(1..))]
-    requests_per_minute: u32,
+    #[arg(long, default_value = "120")]
+    requests_per_minute: NonZeroU32,
     /// Identify clients by X-Forwarded-For (only behind a proxy that sets it).
     #[arg(long)]
     trust_forwarded_for: bool,
@@ -33,8 +33,8 @@ struct Args {
     #[arg(long, default_value = "1", requires = "trust_forwarded_for")]
     trusted_proxy_hops: NonZeroUsize,
     /// Most /mcp requests handled at once; more get 503 with Retry-After.
-    #[arg(long, default_value_t = 256, value_parser = clap::value_parser!(u32).range(1..))]
-    max_in_flight: u32,
+    #[arg(long, default_value = "256")]
+    max_in_flight: NonZeroUsize,
     /// Seconds one /mcp request may take before it gets 504.
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..))]
     request_timeout_secs: u64,
@@ -67,7 +67,7 @@ async fn run(args: Args) -> std::io::Result<()> {
         requests_per_minute: args.requests_per_minute,
         trust_forwarded_for: args.trust_forwarded_for,
         trusted_proxy_hops: args.trusted_proxy_hops,
-        max_in_flight: args.max_in_flight as usize,
+        max_in_flight: args.max_in_flight,
         request_timeout: std::time::Duration::from_secs(args.request_timeout_secs),
         ..StoreConfig::default()
     };
@@ -119,6 +119,12 @@ mod tests {
     #[test]
     fn a_zero_request_budget_is_rejected() {
         let refused = Args::try_parse_from(["reference-store", "--requests-per-minute", "0"]);
+        assert!(refused.is_err());
+    }
+
+    #[test]
+    fn a_zero_in_flight_cap_is_rejected() {
+        let refused = Args::try_parse_from(["reference-store", "--max-in-flight", "0"]);
         assert!(refused.is_err());
     }
 
