@@ -33,7 +33,8 @@ const ANSWER_NONE: &str = "none";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 1024;
 const MAX_ERROR_CHARS: usize = 200;
-/// Retries after the first attempt, for HTTP 429, 529 and 5xx.
+/// Retries after the first attempt, for HTTP 429, 529 and 5xx, and for transport timeouts and
+/// failed connects.
 const MAX_RETRIES: u32 = 3;
 /// First backoff step; each retry doubles it.
 const DEFAULT_BACKOFF_BASE: Duration = Duration::from_millis(500);
@@ -113,18 +114,29 @@ impl Anthropic {
         &self.model
     }
 
-    /// Sends one Messages request, retrying 429, 529 and 5xx up to [`MAX_RETRIES`] times.
+    /// Sends one Messages request, retrying 429, 529, 5xx, timeouts and failed connects up to
+    /// [`MAX_RETRIES`] times.
     async fn create(&self, body: &Value) -> Result<Value> {
         let mut attempt = 0;
         loop {
-            let response = self
+            let sent = self
                 .http
                 .post(format!("{}/v1/messages", self.base_url))
                 .header("x-api-key", &self.key.0)
                 .header("anthropic-version", API_VERSION)
                 .json(body)
                 .send()
-                .await?;
+                .await;
+            let response = match sent {
+                Ok(response) => response,
+                // A timeout or a failed connect is as transient as a 529: wait and ask again.
+                Err(e) if (e.is_timeout() || e.is_connect()) && attempt < MAX_RETRIES => {
+                    tokio::time::sleep(self.backoff(attempt)).await;
+                    attempt += 1;
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
             let status = response.status();
             let retry_after = retry_after(response.headers());
             let reply: Value = response.json().await.unwrap_or(Value::Null);

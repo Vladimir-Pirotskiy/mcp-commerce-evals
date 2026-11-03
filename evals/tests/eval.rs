@@ -392,6 +392,82 @@ async fn overload_and_server_faults_are_retried_up_to_three_times() {
 }
 
 #[tokio::test]
+async fn a_request_that_times_out_is_retried_on_a_new_connection() {
+    let store = spawn_store().await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let router = Router::new().route(
+        "/v1/messages",
+        post(move || {
+            let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+            async move {
+                if first {
+                    // Hold the first request past the client's timeout.
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                Json(json!({ "stop_reason": "end_turn",
+                             "content": [{ "type": "text", "text": "ANSWER: X-1" }] }))
+            }
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
+    let base = format!("http://{}", listener.local_addr().expect("local address"));
+    let task = tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    let slow_once = Server { base, task };
+    let api = Anthropic::new(
+        ApiKey::new("k".to_owned()).expect("key"),
+        "m",
+        &slow_once.base,
+        Duration::from_millis(300),
+    )
+    .expect("client")
+    .with_backoff_base(Duration::ZERO);
+
+    let result = ask(&api, &store, "X-1").await;
+
+    assert_eq!(result.error, None);
+    assert!(result.correct);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_refused_connection_is_retried_until_the_server_is_up() {
+    let store = spawn_store().await;
+    // Reserve a port, free it, and only start the mock API on it a moment later.
+    let reserved = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
+    let address = reserved.local_addr().expect("local address");
+    drop(reserved);
+    let mock = Arc::new(MockApi {
+        script: Mutex::new(vec![final_answer("ANSWER: X-1")].into()),
+        ..MockApi::default()
+    });
+    let router = Router::new()
+        .route("/v1/messages", post(messages))
+        .with_state(mock.clone());
+    let late = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let listener = TcpListener::bind(address).await.expect("rebind the port");
+        let _ = axum::serve(listener, router).await;
+    });
+    let api = Anthropic::new(
+        ApiKey::new("k".to_owned()).expect("key"),
+        "m",
+        &format!("http://{address}"),
+        TIMEOUT,
+    )
+    .expect("client")
+    .with_backoff_base(Duration::from_millis(40));
+
+    let result = ask(&api, &store, "X-1").await;
+    late.abort();
+
+    assert_eq!(result.error, None);
+    assert!(result.correct);
+}
+
+#[tokio::test]
 async fn a_401_is_not_retried_and_its_message_never_contains_the_key() {
     let store = spawn_store().await;
     let denied = json!({ "error": { "type": "authentication_error",
@@ -430,7 +506,8 @@ async fn a_slow_api_hits_the_request_timeout() {
         &slow.base,
         Duration::from_millis(100),
     )
-    .expect("client");
+    .expect("client")
+    .with_backoff_base(Duration::ZERO);
 
     let result = ask(&api, &store, "X-1").await;
 
