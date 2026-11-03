@@ -41,6 +41,78 @@ const P50: usize = 50;
 /// Percentile of the tail latency.
 const P95: usize = 95;
 
+/// Fixed seed of the bootstrap intervals, recorded in every report's `meta`, so the same results
+/// always give the same intervals.
+pub const BOOTSTRAP_SEED: u64 = 0x2026_1103_0cad_5eed;
+/// How many resamples each bootstrap interval is built from.
+pub const BOOTSTRAP_RESAMPLES: usize = 2000;
+
+/// `SplitMix64`, a tiny seeded generator: enough for resampling, no crate needed. Not for secrets.
+struct SplitMix64(u64);
+
+impl SplitMix64 {
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    /// A number in `0..bound` (`bound` above zero); the modulo bias is below 2^-40 for the sizes
+    /// used here.
+    fn below(&mut self, bound: usize) -> usize {
+        let bound = u64::try_from(bound).unwrap_or(u64::MAX).max(1);
+        usize::try_from(self.next_u64() % bound).unwrap_or(0)
+    }
+}
+
+/// The 95% percentile-bootstrap interval of the mean of `values`: resample them with replacement
+/// [`BOOTSTRAP_RESAMPLES`] times from [`BOOTSTRAP_SEED`], and take the 2.5th and 97.5th
+/// percentile of the resampled means. `0..0` for no values.
+#[must_use]
+pub fn bootstrap_mean_ci(values: &[f64]) -> Interval {
+    if values.is_empty() {
+        return Interval {
+            low: 0.0,
+            high: 0.0,
+        };
+    }
+    let mut rng = SplitMix64(BOOTSTRAP_SEED);
+    let size = to_f64(values.len());
+    let mut means: Vec<f64> = (0..BOOTSTRAP_RESAMPLES)
+        .map(|_| {
+            let total: f64 = (0..values.len())
+                .map(|_| values[rng.below(values.len())])
+                .sum();
+            total / size
+        })
+        .collect();
+    means.sort_by(f64::total_cmp);
+    Interval {
+        low: means[BOOTSTRAP_RESAMPLES * 25 / 1000],
+        high: means[BOOTSTRAP_RESAMPLES * 975 / 1000 - 1],
+    }
+}
+
+/// Unbiased pass@k (Chen et al., 2021): the chance that at least one of `k` runs drawn without
+/// replacement from `n` runs, `correct` of which passed, passes. `1 - C(n-c, k) / C(n, k)`, as a
+/// product so large counts do not overflow. 0 when `k` is 0 or above `n`.
+#[must_use]
+pub fn pass_at_k(n: usize, correct: usize, k: usize) -> f64 {
+    if k == 0 || k > n {
+        return 0.0;
+    }
+    let wrong = n - correct.min(n);
+    if wrong < k {
+        return 1.0;
+    }
+    let all_fail: f64 = (wrong + 1..=n)
+        .map(|i| 1.0 - to_f64(k) / to_f64(i))
+        .product();
+    1.0 - all_fail
+}
+
 /// A confidence interval for a share.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Interval {
@@ -77,7 +149,7 @@ pub fn wilson(successes: usize, n: usize) -> Interval {
     clippy::cast_precision_loss,
     reason = "counts of queries are far below 2^52, so the conversion is exact"
 )]
-fn to_f64(count: usize) -> f64 {
+pub(crate) fn to_f64(count: usize) -> f64 {
     count as f64
 }
 
@@ -96,11 +168,17 @@ pub struct Summary {
     pub hit_at_5_ci: Interval,
     /// Mean reciprocal rank (0 for a query with no right answer in the results).
     pub mrr: f64,
+    /// 95% bootstrap interval of `mrr` (seeded, see [`BOOTSTRAP_SEED`]).
+    pub mrr_ci: Interval,
     /// Mean over queries of capped recall@10: expected ids found in the first ten results over
     /// `min(|expected|, 10)`.
     pub recall_at_10: f64,
+    /// 95% bootstrap interval of `recall_at_10`.
+    pub recall_at_10_ci: Interval,
     /// Mean nDCG over the first ten results, with binary relevance.
     pub ndcg_at_10: f64,
+    /// 95% bootstrap interval of `ndcg_at_10`.
+    pub ndcg_at_10_ci: Interval,
     /// Queries whose tool call failed; they count as misses.
     pub errors: usize,
     /// Number of timed search calls behind the latency figures.
@@ -190,16 +268,16 @@ pub fn summarize<R: Borrow<QueryResult>>(results: &[R]) -> Summary {
             .count()
     };
     let (hits_1, hits_5) = (at(1), at(HIT_DEPTH));
-    let reciprocal: f64 = results
-        .iter()
-        .filter_map(|r| r.rank)
-        .map(|rank| 1.0 / to_f64(rank))
-        .sum();
-    let mean_of = |score: fn(&QueryResult) -> f64| {
-        if n == 0 {
+    let per_query =
+        |score: fn(&QueryResult) -> f64| -> Vec<f64> { results.iter().map(|r| score(r)).collect() };
+    let reciprocal = per_query(|r| r.rank.map_or(0.0, |rank| 1.0 / to_f64(rank)));
+    let recall = per_query(|r| recall_at(&r.returned, &r.expected, RANK_DEPTH));
+    let ndcg = per_query(|r| ndcg_at(&r.returned, &r.expected, RANK_DEPTH));
+    let mean_of = |values: &[f64]| {
+        if values.is_empty() {
             0.0
         } else {
-            results.iter().map(|r| score(r)).sum::<f64>() / to_f64(n)
+            values.iter().sum::<f64>() / to_f64(values.len())
         }
     };
     let mut latencies: Vec<f64> = results
@@ -218,9 +296,12 @@ pub fn summarize<R: Borrow<QueryResult>>(results: &[R]) -> Summary {
         hit_at_1_ci: wilson(hits_1, n),
         hit_at_5: share(hits_5, n),
         hit_at_5_ci: wilson(hits_5, n),
-        mrr: if n == 0 { 0.0 } else { reciprocal / to_f64(n) },
-        recall_at_10: mean_of(|r| recall_at(&r.returned, &r.expected, RANK_DEPTH)),
-        ndcg_at_10: mean_of(|r| ndcg_at(&r.returned, &r.expected, RANK_DEPTH)),
+        mrr: mean_of(&reciprocal),
+        mrr_ci: bootstrap_mean_ci(&reciprocal),
+        recall_at_10: mean_of(&recall),
+        recall_at_10_ci: bootstrap_mean_ci(&recall),
+        ndcg_at_10: mean_of(&ndcg),
+        ndcg_at_10_ci: bootstrap_mean_ci(&ndcg),
         errors: results.iter().filter(|r| r.error.is_some()).count(),
         latency_samples: latencies.len(),
         latency_p50_ms: percentile(&latencies, P50),
@@ -338,6 +419,55 @@ mod tests {
         assert_eq!(recall_at(&returned, &expected, 10), 1.0);
         assert_eq!(recall_at(&returned[..5], &expected, 10), 0.5);
         assert_eq!(recall_at(&returned, &expected, 5), 1.0);
+    }
+
+    #[test]
+    fn splitmix64_matches_the_reference_sequence() {
+        let mut rng = SplitMix64(0);
+        assert_eq!(rng.next_u64(), 0xe220_a839_7b1d_cdaf);
+        assert_eq!(rng.next_u64(), 0x6e78_9e6a_a1b9_65f4);
+        assert_eq!(rng.next_u64(), 0x06c4_5d18_8009_454f);
+    }
+
+    #[test]
+    fn the_bootstrap_interval_is_deterministic_and_brackets_the_mean() {
+        let values: Vec<f64> = (0..40)
+            .map(|i| if i % 4 == 0 { 0.0 } else { 1.0 })
+            .collect();
+        let first = bootstrap_mean_ci(&values);
+        assert_eq!(
+            first,
+            bootstrap_mean_ci(&values),
+            "same data, same interval"
+        );
+        assert!(first.low < 0.75 && 0.75 < first.high, "{first:?}");
+        assert!(first.low > 0.55 && first.high < 0.95, "{first:?}");
+        // The result for this data is pinned, so a change of seed or method is noticed.
+        assert!((first.low - 0.6).abs() < 0.051 && (first.high - 0.875).abs() < 0.051);
+    }
+
+    #[test]
+    fn the_bootstrap_interval_of_equal_values_is_a_point_and_of_none_is_zero() {
+        let point = bootstrap_mean_ci(&[0.5; 7]);
+        assert_eq!((point.low, point.high), (0.5, 0.5));
+        assert_eq!(
+            bootstrap_mean_ci(&[]),
+            Interval {
+                low: 0.0,
+                high: 0.0
+            }
+        );
+    }
+
+    #[test]
+    fn pass_at_k_is_the_unbiased_estimator() {
+        // 5 runs, 2 passed: pass@1 = 2/5, pass@2 = 1 - C(3,2)/C(5,2) = 0.7, pass@4 = 1.
+        assert!((pass_at_k(5, 2, 1) - 0.4).abs() < 1e-12);
+        assert!((pass_at_k(5, 2, 2) - 0.7).abs() < 1e-12);
+        assert_eq!(pass_at_k(5, 2, 4), 1.0);
+        assert_eq!(pass_at_k(5, 0, 5), 0.0);
+        assert_eq!(pass_at_k(5, 5, 1), 1.0);
+        assert_eq!(pass_at_k(3, 1, 4), 0.0, "cannot draw more runs than exist");
     }
 
     #[test]

@@ -73,20 +73,20 @@ fn tool_row(label: &str, s: &Summary) -> String {
         s.n,
         interval(s.hit_at_1, s.hit_at_1_ci),
         interval(s.hit_at_5, s.hit_at_5_ci),
-        two_places(s.recall_at_10),
-        two_places(s.ndcg_at_10),
-        two_places(s.mrr),
+        interval(s.recall_at_10, s.recall_at_10_ci),
+        interval(s.ndcg_at_10, s.ndcg_at_10_ci),
+        interval(s.mrr, s.mrr_ci),
         s.latency_p50_ms,
         s.latency_p95_ms
     )
 }
 
 /// The tool-level result as Markdown: a table per kind, the headline rows with and without the
-/// filter queries, and a list of the queries that missed at rank 1. Intervals are 95% Wilson.
+/// filter queries, and a list of the queries that missed at rank 1. Hit intervals are 95% Wilson; recall, nDCG and MRR intervals are seeded 95% bootstrap.
 #[must_use]
 pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
     let mut out = String::from(
-        "| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 | nDCG@10 | MRR | p50 ms | p95 ms |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        "| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 (95% CI) | nDCG@10 (95% CI) | MRR (95% CI) | p50 ms | p95 ms |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n",
     );
     for (kind, summary) in &report.by_kind {
         out.push_str(&tool_row(kind, summary));
@@ -142,9 +142,9 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
 
 fn assistant_row(label: &str, s: &AssistantSummary) -> String {
     format!(
-        "| {label} | {} | {:.2} | {:.2} | {:.2} | {} | {} | {:.1} | {} | {} |\n",
+        "| {label} | {} | {} | {:.2} | {:.2} | {} | {} | {:.1} | {} | {} |\n",
         s.n,
-        s.answer_accuracy,
+        interval(s.answer_accuracy, s.answer_accuracy_ci),
         s.answer_accuracy_without_errors,
         s.mentions_expected,
         s.unanswered,
@@ -159,8 +159,13 @@ fn assistant_row(label: &str, s: &AssistantSummary) -> String {
 #[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {} ({})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        "Model: {}{} ({})\n\n| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
         report.model,
+        if report.response_models.is_empty() {
+            String::new()
+        } else {
+            format!(", answered by {}", report.response_models.join(", "))
+        },
         report.temperature.map_or_else(
             || "no temperature sent".to_owned(),
             |t| format!("temperature {t}")
@@ -170,6 +175,19 @@ pub fn assistant_markdown(report: &AssistantReport) -> String {
         out.push_str(&assistant_row(kind, summary));
     }
     out.push_str(&assistant_row("**all**", &report.overall));
+    if report.trials > 1 {
+        let curve: Vec<String> = report
+            .pass_at_k
+            .iter()
+            .map(|p| format!("pass@{} {}", p.k, two_places(p.value)))
+            .collect();
+        let _ = write!(
+            out,
+            "\n{} trials per query; the interval above treats runs as independent. {}\n",
+            report.trials,
+            curve.join(", ")
+        );
+    }
     out
 }
 

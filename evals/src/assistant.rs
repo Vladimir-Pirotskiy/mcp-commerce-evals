@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 use crate::mcp::McpClient;
-use crate::metrics::{normalize, share};
+use crate::metrics::{Interval, normalize, pass_at_k, share, wilson};
 use crate::queries::Query;
 
 /// Production endpoint of the API.
@@ -251,6 +251,11 @@ pub struct AssistantResult {
     pub output_tokens: u64,
     /// Why the run failed (API or transport), when it did.
     pub error: Option<String>,
+    /// Which repetition of the query this is, from 1 (`--trials`).
+    pub trial: u32,
+    /// The distinct `model` ids the API named in its replies, in order of first appearance. The
+    /// request names an alias; this is what actually answered.
+    pub models: Vec<String>,
 }
 
 /// Whether `answer` contains one of the expected part ids, ignoring case and punctuation.
@@ -359,6 +364,11 @@ async fn converse(
         }
         let reply = api.create(&body).await?;
         result.turns += 1;
+        if let Some(model) = reply["model"].as_str()
+            && !result.models.iter().any(|seen| seen == model)
+        {
+            result.models.push(model.to_owned());
+        }
         result.input_tokens += reply["usage"]["input_tokens"].as_u64().unwrap_or(0);
         result.output_tokens += reply["usage"]["output_tokens"].as_u64().unwrap_or(0);
         result.stop_reason = reply["stop_reason"].as_str().map(str::to_owned);
@@ -408,6 +418,8 @@ pub async fn answer(
         input_tokens: 0,
         output_tokens: 0,
         error: None,
+        trial: 1,
+        models: Vec::new(),
     };
     if let Err(e) = converse(api, mcp, tools, query, max_turns, &mut result).await {
         result.error = Some(e.to_string());
@@ -425,8 +437,12 @@ pub async fn answer(
 pub struct AssistantSummary {
     /// Number of queries.
     pub n: usize,
-    /// Share of all queries whose committed answer is an expected id; an API error is a miss.
+    /// Share of all runs whose committed answer is right (an expected id, or `none` for a
+    /// `no_match` query); an API error is a miss.
     pub answer_accuracy: f64,
+    /// 95% Wilson interval of `answer_accuracy`. It counts every run as independent, so with
+    /// `--trials` above 1, which repeats the same queries, it is narrower than the truth.
+    pub answer_accuracy_ci: Interval,
     /// The same share over the queries that had no API error.
     pub answer_accuracy_without_errors: f64,
     /// Diagnostic: share of queries whose reply mentions an expected id anywhere.
@@ -444,19 +460,79 @@ pub struct AssistantSummary {
     pub output_tokens: u64,
 }
 
-/// Assistant-level results, per kind and overall, with the per-query detail.
+/// The chance that at least one of `k` runs of a query is right, averaged over queries.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PassAtK {
+    /// Number of runs allowed.
+    pub k: u32,
+    /// Unbiased pass@k estimate, from the runs of each query.
+    pub value: f64,
+}
+
+/// How many times each query runs, and how long a run may take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Plan {
+    /// Most model turns per run.
+    pub max_turns: u32,
+    /// Runs per query.
+    pub trials: u32,
+}
+
+impl Plan {
+    /// One run per query.
+    #[must_use]
+    pub fn once(max_turns: u32) -> Self {
+        Self {
+            max_turns,
+            trials: 1,
+        }
+    }
+}
+
+/// Assistant-level results, per kind and overall, with the per-run detail.
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantReport {
-    /// Model that answered.
+    /// Model that was asked for.
     pub model: String,
+    /// Distinct `model` ids the API named in its replies; what really answered.
+    pub response_models: Vec<String>,
+    /// Runs per query.
+    pub trials: u32,
+    /// pass@k for k from 1 to `trials`, overall.
+    pub pass_at_k: Vec<PassAtK>,
     /// Sampling temperature that was sent; null when none was.
     pub temperature: Option<f64>,
     /// Scores over every query.
     pub overall: AssistantSummary,
     /// Scores per query kind.
     pub by_kind: BTreeMap<String, AssistantSummary>,
-    /// One entry per query.
+    /// One entry per run: each query once per trial.
     pub queries: Vec<AssistantResult>,
+}
+
+/// pass@k for k in `1..=trials`, averaged over the queries that have at least k runs.
+fn pass_curve(results: &[AssistantResult], trials: u32) -> Vec<PassAtK> {
+    let mut runs: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for result in results {
+        let entry = runs.entry(result.id.as_str()).or_default();
+        entry.0 += 1;
+        entry.1 += usize::from(result.correct);
+    }
+    (1..=trials)
+        .map(|k| {
+            let scores: Vec<f64> = runs
+                .values()
+                .filter(|(n, _)| *n >= k as usize)
+                .map(|(n, correct)| pass_at_k(*n, *correct, k as usize))
+                .collect();
+            let value = if scores.is_empty() {
+                0.0
+            } else {
+                scores.iter().sum::<f64>() / crate::metrics::to_f64(scores.len())
+            };
+            PassAtK { k, value }
+        })
+        .collect()
 }
 
 fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
@@ -466,6 +542,7 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
     AssistantSummary {
         n,
         answer_accuracy: share(count(|r| r.correct), n),
+        answer_accuracy_ci: wilson(count(|r| r.correct), n),
         answer_accuracy_without_errors: share(count(|r| r.correct), n - errors),
         mentions_expected: share(count(|r| r.mentions_expected), n),
         unanswered: count(|r| r.error.is_none() && !r.answered),
@@ -482,14 +559,24 @@ impl AssistantReport {
     pub fn from_results(
         model: &str,
         temperature: Option<f64>,
+        trials: u32,
         results: Vec<AssistantResult>,
     ) -> Self {
         let mut kinds: BTreeMap<String, Vec<&AssistantResult>> = BTreeMap::new();
         for result in &results {
             kinds.entry(result.kind.clone()).or_default().push(result);
         }
+        let mut response_models: Vec<String> = results
+            .iter()
+            .flat_map(|r| r.models.iter().cloned())
+            .collect();
+        response_models.sort();
+        response_models.dedup();
         Self {
             model: model.to_owned(),
+            response_models,
+            trials,
+            pass_at_k: pass_curve(&results, trials),
             temperature,
             overall: summarize(&results.iter().collect::<Vec<_>>()),
             by_kind: kinds
@@ -501,8 +588,9 @@ impl AssistantReport {
     }
 }
 
-/// Runs every query through the model, in file order. After each query `on_progress` receives
-/// the report so far, so a caller can save partial results of a paid run that fails midway.
+/// Runs every query through the model, in file order, `plan.trials` times each. After each run
+/// `on_progress` receives the report so far, so a caller can save partial results of a paid run
+/// that fails midway.
 ///
 /// # Errors
 ///
@@ -511,24 +599,23 @@ pub async fn run(
     api: &Anthropic,
     mcp: &mut McpClient,
     queries: &[Query],
-    max_turns: u32,
+    plan: Plan,
     mut on_progress: impl FnMut(&AssistantReport) -> Result<()>,
 ) -> Result<AssistantReport> {
     let tools = api_tools(&mcp.list_tools().await?);
-    let mut results = Vec::with_capacity(queries.len());
+    let report = |results: Vec<AssistantResult>| {
+        AssistantReport::from_results(&api.model, api.temperature, plan.trials, results)
+    };
+    let mut results = Vec::with_capacity(queries.len() * plan.trials as usize);
     for query in queries {
-        results.push(answer(api, mcp, &tools, query, max_turns).await);
-        on_progress(&AssistantReport::from_results(
-            &api.model,
-            api.temperature,
-            results.clone(),
-        ))?;
+        for trial in 1..=plan.trials {
+            let mut result = answer(api, mcp, &tools, query, plan.max_turns).await;
+            result.trial = trial;
+            results.push(result);
+            on_progress(&report(results.clone()))?;
+        }
     }
-    Ok(AssistantReport::from_results(
-        &api.model,
-        api.temperature,
-        results,
-    ))
+    Ok(report(results))
 }
 
 #[cfg(test)]

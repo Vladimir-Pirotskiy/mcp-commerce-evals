@@ -17,6 +17,8 @@ pub struct Gates {
     pub min_hit5: Option<f64>,
     /// Least acceptable mean reciprocal rank.
     pub min_mrr: Option<f64>,
+    /// Least acceptable share of correct committed answers in the assistant-level run.
+    pub min_accuracy: Option<f64>,
 }
 
 /// A gate whose score fell short.
@@ -43,16 +45,19 @@ impl fmt::Display for GateFailure {
 }
 
 impl Gates {
-    /// The gates that `overall` does not meet.
+    /// The gates that `overall` (and the assistant-level `accuracy`, when that run happened)
+    /// do not meet.
     #[must_use]
-    pub fn failures(&self, overall: &Summary) -> Vec<GateFailure> {
+    pub fn failures(&self, overall: &Summary, accuracy: Option<f64>) -> Vec<GateFailure> {
         let checks = [
-            ("--min-hit5", self.min_hit5, overall.hit_at_5),
-            ("--min-mrr", self.min_mrr, overall.mrr),
+            ("--min-hit5", self.min_hit5, Some(overall.hit_at_5)),
+            ("--min-mrr", self.min_mrr, Some(overall.mrr)),
+            ("--min-accuracy", self.min_accuracy, accuracy),
         ];
         checks
             .into_iter()
             .filter_map(|(flag, required, actual)| {
+                let actual = actual?;
                 required
                     .filter(|required| actual < *required)
                     .map(|required| GateFailure {
@@ -109,7 +114,7 @@ mod tests {
 
     #[test]
     fn unset_gates_never_fail() {
-        let failures = Gates::default().failures(&overall(0.0, 0.0));
+        let failures = Gates::default().failures(&overall(0.0, 0.0), Some(0.0));
         assert_eq!(failures, Vec::new());
     }
 
@@ -118,12 +123,20 @@ mod tests {
         let gates = Gates {
             min_hit5: Some(0.9),
             min_mrr: Some(0.8),
+            min_accuracy: Some(0.7),
         };
-        let failures = gates.failures(&overall(0.85, 0.9));
-        assert_eq!(failures.len(), 1);
+        let failures = gates.failures(&overall(0.85, 0.9), Some(0.6));
+        assert_eq!(failures.len(), 2);
         assert!(failures[0].to_string().contains("hit5"), "{}", failures[0]);
-        let none = gates.failures(&overall(0.9, 0.8));
+        assert!(
+            failures[1].to_string().contains("accuracy"),
+            "{}",
+            failures[1]
+        );
+        let none = gates.failures(&overall(0.9, 0.8), Some(0.7));
         assert_eq!(none, Vec::new());
+        let skipped = gates.failures(&overall(0.9, 0.8), None);
+        assert_eq!(skipped, Vec::new(), "no assistant run, no accuracy gate");
     }
 
     #[test]

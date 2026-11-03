@@ -3,9 +3,10 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::assistant::SYSTEM_PROMPT;
+use crate::assistant::{Plan, SYSTEM_PROMPT};
 use crate::hash::sha256_hex;
 use crate::mcp::ServerHandshake;
+use crate::metrics::{BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED};
 
 /// Git commit of the build, set by `build.rs`; absent when git could not tell.
 const GIT_COMMIT: Option<&str> = option_env!("MCP_EVALS_GIT_COMMIT");
@@ -19,18 +20,21 @@ pub struct AssistantMeta {
     pub temperature: Option<f64>,
     /// Most model turns per query.
     pub max_turns: u32,
+    /// Runs per query.
+    pub trials: u32,
     /// SHA-256 of the system prompt.
     pub system_prompt_sha256: String,
 }
 
 impl AssistantMeta {
-    /// The settings for a run of `model` with at most `max_turns` turns per query.
+    /// The settings for a run of `model` under `plan`.
     #[must_use]
-    pub fn new(model: &str, temperature: Option<f64>, max_turns: u32) -> Self {
+    pub fn new(model: &str, temperature: Option<f64>, plan: Plan) -> Self {
         Self {
             model: model.to_owned(),
             temperature,
-            max_turns,
+            max_turns: plan.max_turns,
+            trials: plan.trials,
             system_prompt_sha256: sha256_hex(SYSTEM_PROMPT.as_bytes()),
         }
     }
@@ -55,6 +59,10 @@ pub struct Meta {
     pub timeout_secs: u64,
     /// Query kinds that were run; empty means every kind in the file.
     pub kinds: Vec<String>,
+    /// Seed of the bootstrap confidence intervals.
+    pub bootstrap_seed: u64,
+    /// Resamples behind each bootstrap interval.
+    pub bootstrap_resamples: usize,
     /// The server's `serverInfo` from `initialize`.
     pub server_info: Value,
     /// The protocol revision the server negotiated.
@@ -97,6 +105,8 @@ impl Meta {
             search_tool: settings.search_tool.to_owned(),
             timeout_secs: settings.timeout_secs,
             kinds: settings.kinds.to_vec(),
+            bootstrap_seed: BOOTSTRAP_SEED,
+            bootstrap_resamples: BOOTSTRAP_RESAMPLES,
             server_info: handshake.server_info.clone(),
             protocol_version: handshake.protocol_version.clone(),
             assistant,
@@ -127,7 +137,7 @@ mod tests {
         let meta = Meta::new(
             &settings,
             &handshake,
-            Some(AssistantMeta::new("m", None, 8)),
+            Some(AssistantMeta::new("m", None, Plan::once(8))),
         );
 
         assert_eq!(meta.crate_version, env!("CARGO_PKG_VERSION"));
@@ -140,5 +150,8 @@ mod tests {
         let assistant = meta.assistant.expect("assistant meta");
         assert_eq!(assistant.system_prompt_sha256.len(), 64);
         assert_eq!((assistant.temperature, assistant.max_turns), (None, 8));
+        assert_eq!(assistant.trials, 1);
+        assert_eq!(meta.bootstrap_seed, BOOTSTRAP_SEED);
+        assert_eq!(meta.bootstrap_resamples, 2000);
     }
 }

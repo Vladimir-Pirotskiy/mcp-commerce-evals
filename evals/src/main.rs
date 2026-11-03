@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
-use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey};
+use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey, Plan};
 use mcp_commerce_evals::error::{Error, Result};
 use mcp_commerce_evals::gate::{self, Gates};
 use mcp_commerce_evals::mcp::McpClient;
@@ -23,7 +23,8 @@ enum Provider {
 /// Evaluate an MCP store: tool-level retrieval metrics, plus an optional assistant-level run.
 ///
 /// Exit status: 0 on success, 1 when the run could not complete, 2 when any query errored, 3 when
-/// a --min-* gate was not met (the report is written first).
+/// a --min-* gate was not met (the report is written first). A run whose report is incomplete
+/// is a failure to complete, so it exits 1.
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
@@ -41,8 +42,8 @@ struct Args {
     #[arg(long, default_value = "search_products")]
     search_tool: String,
     /// How many results to ask the search tool for (sent as `limit`).
-    #[arg(long, default_value_t = 10)]
-    top_k: usize,
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=100))]
+    top_k: u32,
     /// Also run the assistant-level eval with this provider (costs API tokens).
     #[arg(long, value_enum)]
     assistant: Option<Provider>,
@@ -55,6 +56,10 @@ struct Args {
     /// Exit with status 3 when MRR over all queries is below this (0 to 1).
     #[arg(long, value_parser = gate::parse_threshold)]
     min_mrr: Option<f64>,
+    /// Exit with status 3 when the assistant-level share of correct committed answers is below
+    /// this (0 to 1); needs --assistant.
+    #[arg(long, value_parser = gate::parse_threshold, requires = "assistant")]
+    min_accuracy: Option<f64>,
     /// Run only queries of this kind (repeatable); all kinds when omitted.
     #[arg(long = "kind")]
     kinds: Vec<String>,
@@ -72,8 +77,12 @@ struct Args {
     #[arg(long, value_parser = parse_temperature)]
     temperature: Option<f64>,
     /// Most model turns per query in the assistant-level run.
-    #[arg(long, default_value_t = 8)]
+    #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=50))]
     max_turns: u32,
+    /// Runs of each query in the assistant-level run, for the mean accuracy and pass@k.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=50),
+          requires = "assistant")]
+    trials: u32,
 }
 
 #[tokio::main]
@@ -120,9 +129,10 @@ async fn run(args: Args) -> Result<u8> {
     let api = anthropic_client(&args, timeout)?;
     let mut mcp = McpClient::connect(&args.url, timeout).await?;
     let repeat = usize::try_from(args.repeat).unwrap_or(usize::MAX);
+    let top_k = args.top_k as usize;
     let options = tool_level::Options {
         search_tool: args.search_tool.clone(),
-        top_k: args.top_k,
+        top_k,
         repeat,
     };
     let tool_level = tool_level::run(&mut mcp, &queries, &options).await;
@@ -131,15 +141,19 @@ async fn run(args: Args) -> Result<u8> {
 
     let settings = RunSettings {
         queries_file: raw_queries.as_bytes(),
-        top_k: args.top_k,
+        top_k,
         repeat,
         search_tool: &args.search_tool,
         timeout_secs: args.timeout_secs,
         kinds: &args.kinds,
     };
+    let plan = Plan {
+        max_turns: args.max_turns,
+        trials: args.trials,
+    };
     let assistant_meta = api
         .as_ref()
-        .map(|_| AssistantMeta::new(&args.model, args.temperature, args.max_turns));
+        .map(|_| AssistantMeta::new(&args.model, args.temperature, plan));
     let mut report = EvalReport {
         meta: Meta::new(&settings, mcp.handshake(), assistant_meta),
         store_url: args.url.clone(),
@@ -154,7 +168,7 @@ async fn run(args: Args) -> Result<u8> {
     report.write(&args.out)?;
     if let Some(api) = &api {
         let out = args.out.clone();
-        let assistant_level = assistant::run(api, &mut mcp, &queries, args.max_turns, |partial| {
+        let assistant_level = assistant::run(api, &mut mcp, &queries, plan, |partial| {
             report.assistant_level = Some(partial.clone());
             report.write(&out)
         })
@@ -165,6 +179,7 @@ async fn run(args: Args) -> Result<u8> {
         );
         report.assistant_level = Some(assistant_level);
     }
+    check_complete(&report, queries.len(), plan)?;
     report.complete = true;
     report.write(&args.out)?;
     mcp.close().await;
@@ -172,13 +187,35 @@ async fn run(args: Args) -> Result<u8> {
     Ok(exit_status_of(&report, &args))
 }
 
+/// Refuses to call a report complete when a part of it is missing: one tool-level entry per
+/// query, and one assistant-level entry per query and trial.
+fn check_complete(report: &EvalReport, queries: usize, plan: Plan) -> Result<()> {
+    let assistant_runs = report.assistant_level.as_ref().map(|a| a.queries.len());
+    let wanted_runs = queries * plan.trials as usize;
+    if report.tool_level.queries.len() != queries
+        || assistant_runs.is_some_and(|runs| runs != wanted_runs)
+    {
+        return Err(Error::Protocol(
+            "the report is incomplete: some queries have no result; it is saved with \
+             \"complete\": false"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 /// Prints every failed gate and error count, and returns the exit status for them.
 fn exit_status_of(report: &EvalReport, args: &Args) -> u8 {
     let gates = Gates {
         min_hit5: args.min_hit5,
         min_mrr: args.min_mrr,
+        min_accuracy: args.min_accuracy,
     };
-    let failures = gates.failures(&report.tool_level.overall);
+    let accuracy = report
+        .assistant_level
+        .as_ref()
+        .map(|assistant| assistant.overall.answer_accuracy);
+    let failures = gates.failures(&report.tool_level.overall, accuracy);
     for failure in &failures {
         eprintln!("mcp-commerce-evals: {failure}");
     }

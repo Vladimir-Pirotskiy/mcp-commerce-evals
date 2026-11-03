@@ -14,7 +14,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, post};
 use axum::{Json, Router};
 use catalog::demo_catalog;
-use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey, api_tools};
+use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey, Plan, api_tools};
 use mcp_commerce_evals::mcp::McpClient;
 use mcp_commerce_evals::queries::{self, Query};
 use mcp_commerce_evals::tool_level::{self, Options};
@@ -226,6 +226,7 @@ fn api_reply(stop_reason: &str, content: &Value) -> Reply {
     Reply::new(
         200,
         json!({
+            "model": "test-model-resolved-2026",
             "stop_reason": stop_reason,
             "content": content,
             "usage": { "input_tokens": 100, "output_tokens": 20 }
@@ -540,7 +541,7 @@ async fn the_report_scores_each_query_and_counts_unanswered_apart_from_errors() 
         query("d", "chain four", "FER-CH-4296"),
     ];
 
-    let report = assistant::run(&api, &mut mcp, &queries, 2, |_| Ok(()))
+    let report = assistant::run(&api, &mut mcp, &queries, Plan::once(2), |_| Ok(()))
         .await
         .unwrap();
 
@@ -688,7 +689,7 @@ async fn at_assistant_level_a_no_match_query_is_correct_only_when_the_answer_is_
         no_match_query("n2", "a pump"),
     ];
 
-    let report = assistant::run(&api, &mut mcp, &queries, 2, |_| Ok(()))
+    let report = assistant::run(&api, &mut mcp, &queries, Plan::once(2), |_| Ok(()))
         .await
         .unwrap();
 
@@ -846,7 +847,7 @@ async fn assistant_progress_reports_the_partial_results_after_every_query() {
     let queries = [query("a", "one", "A-1"), query("b", "two", "A-1")];
     let mut seen = Vec::new();
 
-    assistant::run(&api, &mut mcp, &queries, 2, |partial| {
+    assistant::run(&api, &mut mcp, &queries, Plan::once(2), |partial| {
         seen.push((partial.queries.len(), partial.overall.answer_accuracy));
         Ok(())
     })
@@ -857,15 +858,66 @@ async fn assistant_progress_reports_the_partial_results_after_every_query() {
 }
 
 #[tokio::test]
+async fn trials_repeat_each_query_and_report_pass_at_k_and_the_model_the_api_named() {
+    let store = spawn_store().await;
+    let script = vec![
+        final_answer("ANSWER: X-1"),
+        final_answer("ANSWER: Y-9"),
+        final_answer("ANSWER: X-1"),
+    ];
+    let (api_server, _) = spawn_mock(script).await;
+    let api = client(&api_server, "k");
+    let mut mcp = connect(&store.base).await;
+    let plan = Plan {
+        max_turns: 2,
+        trials: 3,
+    };
+
+    let report = assistant::run(
+        &api,
+        &mut mcp,
+        &[query("a", "one", "X-1")],
+        plan,
+        |_| Ok(()),
+    )
+    .await
+    .unwrap();
+
+    let trials: Vec<_> = report
+        .queries
+        .iter()
+        .map(|q| (q.trial, q.correct))
+        .collect();
+    assert_eq!(trials, [(1, true), (2, false), (3, true)]);
+    assert_eq!(report.trials, 3);
+    assert!((report.overall.answer_accuracy - 2.0 / 3.0).abs() < 1e-12);
+    let pass: Vec<_> = report.pass_at_k.iter().map(|p| (p.k, p.value)).collect();
+    assert_eq!(pass.len(), 3);
+    assert!((pass[0].1 - 2.0 / 3.0).abs() < 1e-12);
+    assert_eq!(pass[1], (2, 1.0));
+    assert_eq!(pass[2], (3, 1.0));
+    let ci = report.overall.answer_accuracy_ci;
+    assert!(ci.low < 2.0 / 3.0 && 2.0 / 3.0 < ci.high, "{ci:?}");
+    assert_eq!(report.response_models, ["test-model-resolved-2026"]);
+    assert_eq!(report.queries[0].models, ["test-model-resolved-2026"]);
+}
+
+#[tokio::test]
 async fn a_requested_temperature_is_sent_and_recorded() {
     let store = spawn_store().await;
     let (api_server, mock) = spawn_mock(vec![final_answer("ANSWER: none")]).await;
     let api = client(&api_server, "k").with_temperature(Some(0.3));
     let mut mcp = connect(&store.base).await;
 
-    let report = assistant::run(&api, &mut mcp, &[query("a", "one", "A-1")], 2, |_| Ok(()))
-        .await
-        .unwrap();
+    let report = assistant::run(
+        &api,
+        &mut mcp,
+        &[query("a", "one", "A-1")],
+        Plan::once(2),
+        |_| Ok(()),
+    )
+    .await
+    .unwrap();
 
     assert_eq!(report.temperature, Some(0.3));
     assert_eq!(mock.seen.lock().unwrap()[0].1["temperature"], 0.3);
@@ -1079,4 +1131,119 @@ async fn cli_runs_only_the_requested_kinds() {
     let (code, stderr) = run_cli(&store.base, &["--kind", "nope", "--force"], &out).await;
     assert_eq!(code, 1);
     assert!(stderr.contains("no query has kind"), "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_refuses_out_of_range_numbers_before_any_traffic() {
+    let out = scratch_file("ranges");
+    for flags in [
+        ["--top-k", "0"],
+        ["--top-k", "101"],
+        ["--max-turns", "0"],
+        ["--max-turns", "51"],
+        ["--repeat", "0"],
+    ] {
+        // Nothing listens on this address: only validation can explain a prompt, clean failure.
+        let (code, stderr) = run_cli("http://127.0.0.1:9", &flags, &out).await;
+        assert_eq!(code, 2, "{flags:?}: {stderr}");
+        assert!(stderr.contains(flags[0]), "{flags:?}: {stderr}");
+    }
+    assert!(!out.exists());
+}
+
+/// Runs the CLI with an assistant against the mock API and returns its exit code, stderr and
+/// parsed report.
+async fn run_cli_assistant(
+    store: &Server,
+    api_server: &Server,
+    extra: &[&str],
+    name: &str,
+) -> (i32, String, Value) {
+    let out = scratch_file(name);
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mcp-commerce-evals"));
+    command
+        .args([
+            "--url",
+            &format!("{}/mcp", store.base),
+            "--queries",
+            QUERIES,
+            "--kind",
+            "no_match",
+            "--assistant",
+            "anthropic",
+            "--out",
+        ])
+        .arg(&out)
+        .args(extra)
+        .env("ANTHROPIC_API_KEY", "test-key")
+        .env("ANTHROPIC_BASE_URL", &api_server.base);
+    let output = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .expect("join")
+        .expect("run the binary");
+    let report = std::fs::read_to_string(&out)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    (
+        output.status.code().expect("exit code"),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+        report,
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_min_accuracy_gates_the_assistant_run_with_exit_3() {
+    let store = spawn_store().await;
+    // Four no_match queries: two abstain, two name a part.
+    let script = vec![
+        final_answer("ANSWER: none"),
+        final_answer("ANSWER: none"),
+        final_answer("ANSWER: FER-CH-4296"),
+        final_answer("ANSWER: FER-CH-4296"),
+    ];
+    let (api_server, _) = spawn_mock(script.clone()).await;
+
+    let (code, stderr, report) =
+        run_cli_assistant(&store, &api_server, &["--min-accuracy", "0.9"], "acc-fail").await;
+
+    assert_eq!(code, 3, "{stderr}");
+    assert!(stderr.contains("gate failed: accuracy 0.5000"), "{stderr}");
+    assert_eq!(report["complete"], true);
+    assert_eq!(report["assistant_level"]["overall"]["answer_accuracy"], 0.5);
+
+    let (api_server, _) = spawn_mock(script).await;
+    let (code, stderr, _) =
+        run_cli_assistant(&store, &api_server, &["--min-accuracy", "0.5"], "acc-ok").await;
+    assert_eq!(code, 0, "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_trials_run_each_query_that_many_times_and_record_the_curve() {
+    let store = spawn_store().await;
+    let (api_server, mock) = spawn_mock(vec![final_answer("ANSWER: none"); 8]).await;
+
+    let (code, stderr, report) =
+        run_cli_assistant(&store, &api_server, &["--trials", "2"], "trials").await;
+
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(mock.seen.lock().unwrap().len(), 8);
+    let assistant = &report["assistant_level"];
+    assert_eq!(assistant["trials"], 2);
+    assert_eq!(assistant["queries"].as_array().unwrap().len(), 8);
+    assert_eq!(assistant["pass_at_k"].as_array().unwrap().len(), 2);
+    assert_eq!(assistant["pass_at_k"][1]["value"], 1.0);
+    assert_eq!(report["meta"]["assistant"]["trials"], 2);
+    assert_eq!(report["meta"]["bootstrap_seed"].as_u64().is_some(), true);
+    assert!(report["tool_level"]["overall"]["mrr_ci"]["low"].is_number());
+    assert_eq!(assistant["response_models"][0], "test-model-resolved-2026");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_min_accuracy_without_an_assistant_run_is_refused() {
+    let store = spawn_store().await;
+    let (code, stderr) =
+        run_cli(&store.base, &["--min-accuracy", "0.5"], &scratch_file("na")).await;
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("--assistant"), "{stderr}");
 }
