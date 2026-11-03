@@ -106,6 +106,10 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
 }
 
 /// Serves `app` on `listener` until the future is dropped or the server fails.
+///
+/// # Errors
+///
+/// Fails when the underlying server stops with an I/O error.
 pub async fn serve(listener: TcpListener, app: Router) -> std::io::Result<()> {
     axum::serve(
         listener,

@@ -67,44 +67,45 @@ fn describe(part: &Part, requested: u32) -> (Availability, String) {
     }
 }
 
-/// Availability of every requested line.
+/// Availability of every requested part. Repeated parts are added up first, exactly as
+/// [`build_cart`] does, so the two tools never disagree: the entry for a part that was sent on
+/// several lines carries the summed `requested`. Entries follow the first appearance of each
+/// part; every unknown number gets an entry of its own.
 pub fn check(catalog: &Catalog, lines: &[LineRequest]) -> Vec<LineAvailability> {
-    lines
-        .iter()
-        .map(|line| {
-            let requested = quantity_of(line);
-            let Some(part) = catalog.get(&line.id) else {
-                return LineAvailability {
-                    id: line.id.clone(),
+    merge_lines(catalog, lines)
+        .into_iter()
+        .map(|merged| match merged {
+            Merged::Known(part, requested) => {
+                let (availability, message) = describe(part, requested);
+                LineAvailability {
+                    id: part.id.clone(),
                     requested,
-                    availability: Availability::UnknownPart,
-                    quantity_on_shelf: 0,
-                    restock_days: None,
-                    unit_price_usd: None,
-                    message: UNKNOWN_PART_MESSAGE.to_owned(),
-                };
-            };
-            let (availability, message) = describe(part, requested);
-            LineAvailability {
-                id: part.id.clone(),
-                requested,
-                availability,
-                quantity_on_shelf: part.quantity_available,
-                restock_days: part.restock_days,
-                unit_price_usd: Some(part.price_usd),
-                message,
+                    availability,
+                    quantity_on_shelf: part.quantity_available,
+                    restock_days: part.restock_days,
+                    unit_price_usd: Some(part.price_usd),
+                    unit_price_cents: Some(part.price_cents()),
+                    message,
+                }
             }
+            Merged::Unknown(line) => LineAvailability {
+                id: line.id.clone(),
+                requested: quantity_of(line),
+                availability: Availability::UnknownPart,
+                quantity_on_shelf: 0,
+                restock_days: None,
+                unit_price_usd: None,
+                unit_price_cents: None,
+                message: UNKNOWN_PART_MESSAGE.to_owned(),
+            },
         })
         .collect()
 }
 
-fn cents(dollars: f64) -> u64 {
-    // Prices are positive and below $10,000, so the rounded value always fits.
-    (dollars * 100.0).round() as u64
-}
-
-fn dollars(cents: u64) -> f64 {
-    cents as f64 / 100.0
+/// Dollars for a whole number of cents. Cart amounts stay far below `u32::MAX` cents (20 lines of
+/// at most 99 units of a part under $10,000); a larger value would saturate rather than wrap.
+fn dollars(cents: u32) -> f64 {
+    f64::from(cents) / 100.0
 }
 
 /// FNV-1a, so that the same cart contents give the same identifier on every machine.
@@ -114,20 +115,31 @@ fn fingerprint(text: &str) -> u64 {
     })
 }
 
-/// Sums the requested quantity per part, so a part sent on several lines is judged once.
-/// Lines naming no known part are described in `problems`.
-fn merge_lines<'a>(
-    catalog: &'a Catalog,
-    lines: &[LineRequest],
-    problems: &mut Vec<String>,
-) -> BTreeMap<&'a str, (&'a Part, u32)> {
-    let mut merged = BTreeMap::new();
+/// A requested part after repeated lines were added up.
+enum Merged<'a> {
+    /// A part in the catalog and the total quantity requested over all its lines.
+    Known(&'a Part, u32),
+    /// A line naming no part.
+    Unknown(&'a LineRequest),
+}
+
+/// Sums the requested quantity per part, so a part sent on several lines is judged once. Known
+/// parts keep the position of their first line; each unknown line stays on its own. Shared by
+/// `check_availability` and `create_cart` so that both judge the same quantities.
+fn merge_lines<'a>(catalog: &'a Catalog, lines: &'a [LineRequest]) -> Vec<Merged<'a>> {
+    let mut merged: Vec<Merged<'a>> = Vec::new();
     for line in lines {
-        match catalog.get(&line.id) {
-            Some(part) => {
-                merged.entry(part.id.as_str()).or_insert((part, 0)).1 += quantity_of(line);
-            }
-            None => problems.push(format!("{}: {UNKNOWN_PART_MESSAGE}", echo(&line.id))),
+        let Some(part) = catalog.get(&line.id) else {
+            merged.push(Merged::Unknown(line));
+            continue;
+        };
+        let existing = merged.iter_mut().find_map(|entry| match entry {
+            Merged::Known(known, total) if known.id == part.id => Some(total),
+            Merged::Known(..) | Merged::Unknown(_) => None,
+        });
+        match existing {
+            Some(total) => *total += quantity_of(line),
+            None => merged.push(Merged::Known(part, quantity_of(line))),
         }
     }
     merged
@@ -143,7 +155,18 @@ pub fn build_cart(
 ) -> Result<CartOutput, ToolError> {
     validate(lines)?;
     let mut problems = Vec::new();
-    let merged = merge_lines(catalog, lines, &mut problems);
+    // Sorted by part number, so the same items give the same cart id in any order.
+    let mut merged: BTreeMap<&str, (&Part, u32)> = BTreeMap::new();
+    for entry in merge_lines(catalog, lines) {
+        match entry {
+            Merged::Known(part, total) => {
+                merged.insert(part.id.as_str(), (part, total));
+            }
+            Merged::Unknown(line) => {
+                problems.push(format!("{}: {UNKNOWN_PART_MESSAGE}", echo(&line.id)));
+            }
+        }
+    }
     for (part, total) in merged.values() {
         if *total > MAX_QUANTITY {
             return Err(ToolError::MergedQuantity {
@@ -172,16 +195,15 @@ pub fn build_cart(
                 title: part.title.clone(),
                 quantity: *quantity,
                 unit_price_usd: part.price_usd,
-                line_total_usd: dollars(cents(part.price_usd) * u64::from(*quantity)),
+                unit_price_cents: part.price_cents(),
+                line_total_usd: dollars(part.price_cents() * quantity),
+                line_total_cents: part.price_cents() * quantity,
                 availability,
                 restock_days: part.restock_days,
             }
         })
         .collect();
-    let subtotal = merged
-        .values()
-        .map(|(p, q)| cents(p.price_usd) * u64::from(*q))
-        .sum();
+    let subtotal: u32 = cart_lines.iter().map(|l| l.line_total_cents).sum();
     let items = cart_lines
         .iter()
         .map(|l| format!("{}:{}", l.id, l.quantity))
@@ -193,6 +215,7 @@ pub fn build_cart(
         currency: "USD".to_owned(),
         lines: cart_lines,
         subtotal_usd: dollars(subtotal),
+        subtotal_cents: subtotal,
         note: "Give the buyer checkout_url. They review the cart and pay there; this store never \
                takes payment through a tool. Shipping and tax are added at checkout. This is a \
                demo store: the link does not lead to a real checkout."
@@ -234,7 +257,10 @@ mod tests {
             &catalog,
             &[
                 line(&in_stock.id, Some(2)),
-                line(&in_stock.id, Some(in_stock.quantity_available + 1)),
+                line(
+                    &id_with(&catalog, StockStatus::LowStock),
+                    Some(MAX_QUANTITY),
+                ),
                 line(&id_with(&catalog, StockStatus::Backorder), None),
                 line(&id_with(&catalog, StockStatus::OutOfStock), None),
                 line("NOPE-1", None),
@@ -253,6 +279,64 @@ mod tests {
         );
         assert!(got[2].restock_days.is_some());
         assert!(got[4].unit_price_usd.is_none());
+    }
+
+    #[test]
+    fn money_in_cents_is_the_rounded_dollar_amount_everywhere() {
+        let catalog = demo_catalog();
+        for part in catalog.parts() {
+            assert_eq!(
+                f64::from(part.price_cents()),
+                (part.price_usd * 100.0).round()
+            );
+        }
+        let part = catalog
+            .parts()
+            .iter()
+            .find(|p| p.stock == StockStatus::InStock && p.quantity_available >= 3)
+            .unwrap();
+        let cart = build_cart(&catalog, &[line(&part.id, Some(3))], "https://x.example").unwrap();
+        let cart_line = &cart.lines[0];
+        assert_eq!(
+            f64::from(cart_line.unit_price_cents),
+            (cart_line.unit_price_usd * 100.0).round()
+        );
+        assert_eq!(
+            f64::from(cart_line.line_total_cents),
+            (cart_line.line_total_usd * 100.0).round()
+        );
+        assert_eq!(
+            f64::from(cart.subtotal_cents),
+            (cart.subtotal_usd * 100.0).round()
+        );
+        let checked = &check(&catalog, &[line(&part.id, None)])[0];
+        assert_eq!(checked.unit_price_cents, Some(part.price_cents()));
+    }
+
+    #[test]
+    fn check_availability_adds_repeated_lines_up_like_create_cart() {
+        let catalog = demo_catalog();
+        let part = catalog
+            .parts()
+            .iter()
+            .find(|p| p.stock == StockStatus::InStock && p.quantity_available >= 4)
+            .unwrap();
+        // Each line fits on the shelf alone; together they do not.
+        let each = part.quantity_available - 1;
+        let lines = [
+            line(&part.id, Some(each)),
+            line("NOPE-1", None),
+            line(&part.id.to_lowercase(), Some(each)),
+        ];
+
+        let checked = check(&catalog, &lines);
+
+        assert_eq!(checked.len(), 2, "one entry per part, unknown lines apart");
+        assert_eq!(checked[0].id, part.id);
+        assert_eq!(checked[0].requested, 2 * each);
+        assert_eq!(checked[0].availability, Availability::Partial);
+        assert_eq!(checked[1].availability, Availability::UnknownPart);
+        assert!(build_cart(&catalog, &lines, "https://x.example").is_err());
     }
 
     #[test]
@@ -275,6 +359,8 @@ mod tests {
         assert_eq!(cart.lines.len(), 1);
         assert_eq!(cart.lines[0].quantity, 5);
         assert_eq!(cart.subtotal_usd, (part.price_usd * 500.0).round() / 100.0);
+        assert_eq!(cart.subtotal_cents, part.price_cents() * 5);
+        assert_eq!(cart.lines[0].line_total_cents, cart.subtotal_cents);
         assert!(
             cart.checkout_url
                 .starts_with("https://shop.example/checkout/cart_")

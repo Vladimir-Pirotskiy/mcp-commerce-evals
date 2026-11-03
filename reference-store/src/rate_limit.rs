@@ -4,6 +4,11 @@
 //! that proxy appended to `X-Forwarded-For`. The table is bounded, so a flood of distinct
 //! addresses cannot grow memory without limit.
 //!
+//! Windows are fixed, not sliding: a client that spends its whole budget at the end of one window
+//! and again at the start of the next gets up to twice the budget within one window's length.
+//! That burst is bounded by 2x, which is fine for protecting a demo server; a sliding window or
+//! token bucket would remove it at the cost of per-client state.
+//!
 //! The limiter wraps the MCP service, and the `Host` and `Origin` checks run inside that service
 //! (rmcp does not expose them as a separate layer), so a request refused for its `Host` or
 //! `Origin` still spends one unit of its client's budget.
@@ -127,7 +132,7 @@ fn client_network(ip: IpAddr) -> IpAddr {
             let mask = !0_u128 << (128 - IPV6_PREFIX_BITS);
             IpAddr::V6(Ipv6Addr::from(u128::from(v6) & mask))
         }
-        v4 => v4,
+        v4 @ IpAddr::V4(_) => v4,
     }
 }
 

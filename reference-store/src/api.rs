@@ -53,8 +53,10 @@ pub struct PartSummary {
     pub brand: String,
     /// Product category.
     pub category: Category,
-    /// Price in US dollars.
+    /// Price in US dollars, for display.
     pub price_usd: f64,
+    /// Price in whole cents; authoritative, use it for arithmetic.
+    pub price_cents: u32,
     /// Stock status at search time.
     pub stock_status: StockStatus,
     /// What the part fits; empty means universal.
@@ -69,6 +71,7 @@ impl From<&Part> for PartSummary {
             brand: part.brand.clone(),
             category: part.category,
             price_usd: part.price_usd,
+            price_cents: part.price_cents(),
             stock_status: part.stock,
             fits: part.fits.clone(),
         }
@@ -103,6 +106,8 @@ pub struct ProductDetail {
     /// Everything the store knows about the part.
     #[serde(flatten)]
     pub part: Part,
+    /// Price in whole cents; authoritative, `price_usd` is the same amount for display.
+    pub price_cents: u32,
 }
 
 /// A part number and how many the buyer wants.
@@ -155,8 +160,10 @@ pub struct LineAvailability {
     pub quantity_on_shelf: u32,
     /// Days until a backordered part ships.
     pub restock_days: Option<u32>,
-    /// Unit price in US dollars; absent for an unknown part.
+    /// Unit price in US dollars, for display; absent for an unknown part.
     pub unit_price_usd: Option<f64>,
+    /// Unit price in whole cents; authoritative. Absent for an unknown part.
+    pub unit_price_cents: Option<u32>,
     /// One sentence a buyer can be told.
     pub message: String,
 }
@@ -179,10 +186,14 @@ pub struct CartLine {
     pub title: String,
     /// Units in the cart.
     pub quantity: u32,
-    /// Unit price in US dollars.
+    /// Unit price in US dollars, for display.
     pub unit_price_usd: f64,
-    /// Unit price times quantity.
+    /// Unit price in whole cents; authoritative.
+    pub unit_price_cents: u32,
+    /// Unit price times quantity, in US dollars, for display.
     pub line_total_usd: f64,
+    /// Unit price times quantity, in whole cents; authoritative.
+    pub line_total_cents: u32,
     /// `available` or `backorder`.
     pub availability: Availability,
     /// Days until a backordered line ships.
@@ -201,8 +212,10 @@ pub struct CartOutput {
     pub currency: String,
     /// The cart lines.
     pub lines: Vec<CartLine>,
-    /// Sum of the line totals; shipping and tax are added at checkout.
+    /// Sum of the line totals in US dollars, for display; shipping and tax are added at checkout.
     pub subtotal_usd: f64,
+    /// Sum of the line totals in whole cents; authoritative.
+    pub subtotal_cents: u32,
     /// What to tell the buyer.
     pub note: String,
 }

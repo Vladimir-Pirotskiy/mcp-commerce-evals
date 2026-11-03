@@ -25,6 +25,7 @@ pub struct ReferenceStore {
 
 impl ReferenceStore {
     /// A handler over `catalog`; carts point at `checkout_base`.
+    #[must_use]
     pub fn new(catalog: Arc<Catalog>, checkout_base: Arc<str>) -> Self {
         Self {
             catalog,
@@ -92,7 +93,10 @@ impl ReferenceStore {
     ) -> Result<Json<ProductDetail>, ToolError> {
         input::bounded("id", &args.id)?;
         match self.catalog.get(&args.id) {
-            Some(part) => Ok(Json(ProductDetail { part: part.clone() })),
+            Some(part) => Ok(Json(ProductDetail {
+                price_cents: part.price_cents(),
+                part: part.clone(),
+            })),
             None => Err(ToolError::UnknownPart { id: args.id }),
         }
     }
@@ -102,8 +106,9 @@ impl ReferenceStore {
                        {id, quantity} items. For each item the answer is available (all on the \
                        shelf), partial (fewer on the shelf than requested), backorder (ships \
                        after restock_days), unavailable (out of stock, no date) or unknown_part. \
-                       Call this before create_cart and tell the buyer about any item that is \
-                       not available. Changes nothing.",
+                       A part sent on several lines is added up first, as create_cart does. Call \
+                       this before create_cart and tell the buyer about any item that is not \
+                       available. Changes nothing.",
         annotations(
             title = "Check availability",
             read_only_hint = true,
@@ -123,7 +128,8 @@ impl ReferenceStore {
     #[tool(
         description = "Create a cart and get a checkout link for the buyer. Use it only after \
                        the buyer has chosen the parts and quantities. Takes one to twenty \
-                       {id, quantity} items and returns checkout_url, lines and the subtotal. \
+                       {id, quantity} items and returns checkout_url, lines and the subtotal; \
+                       amounts come in dollars and, authoritatively, in cents. \
                        The buyer opens checkout_url, reviews the cart and pays there: you never \
                        pay and cannot. Refuses unknown parts, out-of-stock parts and quantities \
                        above the shelf (a part sent on several lines counts once, with the \
@@ -152,5 +158,9 @@ impl ReferenceStore {
         between them, check_availability for the quantity the buyer wants, then create_cart and \
         hand the checkout_url to the buyer. The buyer pays on that page; no tool takes payment. \
         Do not guess part numbers: copy them from search results."
+)]
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "`#[tool_handler]` generates `async fn`s, as the `ServerHandler` trait requires"
 )]
 impl ServerHandler for ReferenceStore {}

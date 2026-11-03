@@ -227,7 +227,7 @@ async fn filters_reach_the_search() {
         )
         .await;
     let results = result["structuredContent"]["results"].as_array().unwrap();
-    assert!(!results.is_empty());
+    assert_ne!(results.len(), 0);
     for part in results {
         assert_eq!(part["category"], "tire");
         assert!(part["price_usd"].as_f64().unwrap() <= 30.0);
