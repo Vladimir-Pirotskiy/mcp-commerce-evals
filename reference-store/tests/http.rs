@@ -1,6 +1,6 @@
 //! The store over real HTTP: the four tools, their schemas, the rate limit and the host check.
 
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 
 use catalog::{StockStatus, demo_catalog};
@@ -551,6 +551,47 @@ async fn a_configured_non_loopback_host_is_accepted_with_or_without_a_port() {
         .rpc_with_headers(&[("host", "shop.example.net")])
         .await;
     assert_eq!(other, StatusCode::FORBIDDEN);
+}
+
+// rmcp lowercases both the Host header and the configured entries before it compares them, so no
+// extra normalisation is needed here; this pins that behaviour (DNS names are case-insensitive).
+#[tokio::test]
+async fn host_and_origin_matching_ignore_case() {
+    let store = start(public_host()).await;
+    let status = store
+        .rpc_with_headers(&[("host", "Shop.Example.ORG:8443")])
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let status = store
+        .rpc_with_headers(&[("origin", "https://SHOP.example.org")])
+        .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_get_on_the_stateless_endpoint_is_refused_and_holds_no_in_flight_permit() {
+    let store = start(StoreConfig {
+        max_in_flight: NonZeroUsize::MIN,
+        ..StoreConfig::default()
+    })
+    .await;
+    let get = store
+        .client
+        .get(format!("{}/mcp", store.base))
+        .header("accept", "text/event-stream")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    // With a cap of one, a leaked permit would make every request after the GET answer 503.
+    for _ in 0..3 {
+        assert_eq!(
+            store.rpc("tools/list", json!({})).await.status(),
+            StatusCode::OK
+        );
+    }
+    drop(get);
 }
 
 #[tokio::test]

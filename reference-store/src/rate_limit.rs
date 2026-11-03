@@ -328,6 +328,77 @@ mod tests {
         assert_eq!(forwarded_address(&map, hops(4)), None);
     }
 
+    /// A tiny seeded generator, so the property loops below need no extra dependency.
+    fn next(state: &mut u64) -> u64 {
+        *state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        *state >> 33
+    }
+
+    #[test]
+    fn the_forwarded_hop_is_the_entry_n_from_the_right_for_any_header_split() {
+        let mut state = 7;
+        for _ in 0..500 {
+            let count = usize::try_from(next(&mut state) % 8 + 1).expect("small");
+            let addresses: Vec<IpAddr> = (0..count)
+                .map(|_| {
+                    IpAddr::from(std::net::Ipv4Addr::from(
+                        u32::try_from(next(&mut state)).expect("31 bits"),
+                    ))
+                })
+                .collect();
+            // The same list split over several header lines at random points.
+            let mut lines: Vec<String> = vec![String::new()];
+            for (i, address) in addresses.iter().enumerate() {
+                if i > 0 && next(&mut state).is_multiple_of(3) {
+                    lines.push(String::new());
+                }
+                let line = lines.last_mut().expect("a line");
+                if !line.is_empty() {
+                    line.push_str(" , ");
+                }
+                line.push_str(&address.to_string());
+            }
+            let map = headers(&lines.iter().map(String::as_str).collect::<Vec<_>>());
+            for n in 1..=count + 2 {
+                let want = count.checked_sub(n).map(|i| addresses[i]);
+                assert_eq!(forwarded_address(&map, hops(n)), want, "{lines:?} hop {n}");
+            }
+        }
+    }
+
+    #[test]
+    fn forwarded_parsing_never_panics_on_arbitrary_header_bytes() {
+        let mut state = 99;
+        for _ in 0..2000 {
+            let len = usize::try_from(next(&mut state) % 40).expect("small");
+            let bytes: Vec<u8> = (0..len)
+                .map(|_| {
+                    // Mostly the characters that matter to the parser, some raw bytes.
+                    let pick = next(&mut state) % 12;
+                    match pick {
+                        0 => b',',
+                        1 => b' ',
+                        2 => b':',
+                        3 => b'.',
+                        4 => b'[',
+                        5 => b']',
+                        6..=9 => b'0' + u8::try_from(next(&mut state) % 10).expect("digit"),
+                        _ => u8::try_from(next(&mut state) % 256).expect("byte"),
+                    }
+                })
+                .collect();
+            let mut map = HeaderMap::new();
+            if let Ok(value) = HeaderValue::from_bytes(&bytes) {
+                map.append("x-forwarded-for", value);
+            }
+            for n in 1..=4 {
+                let _ = forwarded_address(&map, hops(n));
+            }
+        }
+    }
+
     #[test]
     fn a_forwarded_entry_that_is_not_an_address_is_not_used() {
         assert_eq!(

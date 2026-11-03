@@ -45,6 +45,8 @@ pub async fn guard(State(state): State<GuardState>, request: Request, next: Next
             .insert(header::RETRY_AFTER, HeaderValue::from(RETRY_AFTER_SECS));
         return response;
     };
+    // Invariant: the permit is held only until `next.run` returns the response head, so a
+    // stream that outlives it (an SSE body) never pins a slot; stateless mode refuses GET anyway.
     match tokio::time::timeout(state.timeout, next.run(request)).await {
         Ok(response) => response,
         Err(_) => (StatusCode::GATEWAY_TIMEOUT, "the request took too long\n").into_response(),

@@ -285,6 +285,68 @@ mod tests {
     }
 
     #[test]
+    fn merging_is_order_independent_and_never_exceeds_the_quantity_cap() {
+        let catalog = demo_catalog();
+        let pool: Vec<&Part> = catalog
+            .parts()
+            .iter()
+            .filter(|p| p.stock == StockStatus::Backorder)
+            .take(4)
+            .collect();
+        let mut state = 11_u64;
+        let mut next = |bound: u64| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 33) % bound
+        };
+        let (mut refused, mut accepted) = (0, 0);
+        for _ in 0..300 {
+            let count = usize::try_from(next(MAX_LINES as u64) + 1).unwrap();
+            let lines: Vec<LineRequest> = (0..count)
+                .map(|_| {
+                    let id = &pool[usize::try_from(next(4)).unwrap()].id;
+                    line(id, Some(u32::try_from(next(60) + 1).unwrap()))
+                })
+                .collect();
+            let mut shuffled: Vec<LineRequest> =
+                lines.iter().map(|l| line(&l.id, l.quantity)).collect();
+            for i in (1..shuffled.len()).rev() {
+                shuffled.swap(i, usize::try_from(next(i as u64 + 1)).unwrap());
+            }
+
+            let first = build_cart(&catalog, &lines, "https://x.example");
+            let second = build_cart(&catalog, &shuffled, "https://x.example");
+
+            match (first, second) {
+                (Ok(a), Ok(b)) => {
+                    accepted += 1;
+                    assert_eq!(a.cart_id, b.cart_id);
+                    assert_eq!(a.subtotal_cents, b.subtotal_cents);
+                    for cart_line in &a.lines {
+                        assert!(cart_line.quantity <= MAX_QUANTITY, "{}", cart_line.id);
+                        let asked: u32 = lines
+                            .iter()
+                            .filter(|l| l.id == cart_line.id)
+                            .filter_map(|l| l.quantity)
+                            .sum();
+                        assert_eq!(cart_line.quantity, asked);
+                    }
+                }
+                (Err(a), Err(b)) => {
+                    refused += 1;
+                    assert_eq!(std::mem::discriminant(&a), std::mem::discriminant(&b));
+                }
+                _ => panic!("the order of lines changed the outcome: {lines:?}"),
+            }
+        }
+        assert!(
+            accepted > 10 && refused > 10,
+            "{accepted} ok, {refused} refused"
+        );
+    }
+
+    #[test]
     fn the_dearest_possible_cart_is_exact_and_fits() {
         let parts: Vec<Part> = (0..MAX_LINES)
             .map(|i| {
