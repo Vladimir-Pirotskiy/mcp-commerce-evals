@@ -120,7 +120,8 @@ an error instead of serving a shorter catalog. Prices must be whole cents from $
 
 `/mcp` also sheds load: at most 256 requests are handled at once (`--max-in-flight`; more get 503
 with `Retry-After`) and a request that runs past 30 seconds (`--request-timeout-secs`) gets 504.
-The store stops on ctrl-c or SIGTERM, finishing requests already in flight.
+The store stops on ctrl-c or SIGTERM, closing idle connections and finishing requests already
+in flight. Connections are capped and read on a clock too (see the threat model).
 `--allowed-host` takes a bare host with an optional port (`shop.example.org:8443`); a scheme, a
 path or other junk is refused at startup. Inputs: a query
 is at most 200 characters and 20 words, `limit` is 1 to 25 and anything else is refused, `brand`,
@@ -448,7 +449,12 @@ The store is a demo meant to be exposed behind a proxy for a hosted assistant. I
 - a spoofed `X-Forwarded-For`: only the entry the trusted proxy appended is read, never the
   client-written ones on its left;
 - oversized bodies (64 KiB), long or numerous inputs, and requests that run too long (504);
-- slow or stuck clients and floods: a cap on requests in flight (503) and a per-client rate limit;
+- slow clients: a client that has not finished the request line and headers within 10 seconds
+  (`--header-read-timeout-secs`) has its connection closed, and so does an idle kept-alive
+  connection that sends no next request in that time;
+- connection floods: at most 1024 connections open at once (`--max-connections`); a connection
+  over the cap is closed without an answer, never queued;
+- request floods: a cap on requests in flight (503) and a per-client rate limit;
 - cross-origin browser calls and DNS rebinding: `Host` and `Origin` are checked, case-insensitively;
 - exhaustion of the client table: it is bounded, with a shared overflow bucket.
 

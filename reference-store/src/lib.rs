@@ -13,20 +13,25 @@ mod input;
 mod rate_limit;
 mod tools;
 
-use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::middleware::from_fn_with_state;
+use axum::extract::{ConnectInfo, Request};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::Json;
 use axum::routing::get;
 use catalog::Catalog;
+use hyper::server::conn::http1;
+use hyper_util::rt::{TokioIo, TokioTimer};
+use hyper_util::server::graceful::GracefulShutdown;
+use hyper_util::service::TowerToHyperService;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::json;
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 
 pub use hosts::{AllowedHost, InvalidHost};
 pub use tools::ReferenceStore;
@@ -165,10 +170,81 @@ pub async fn serve_until(
     app: Router,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .with_graceful_shutdown(shutdown)
-    .await
+    serve_with_limits(listener, app, ConnectionLimits::default(), shutdown).await
+}
+
+/// Limits on the connections the server accepts.
+#[derive(Debug, Clone, Copy)]
+pub struct ConnectionLimits {
+    /// How long a client may take to send the request line and headers before the connection is
+    /// closed. Also bounds how long an idle kept-alive connection waits for its next request.
+    pub header_read_timeout: Duration,
+    /// Most connections open at once; a connection over the cap is closed without being served.
+    pub max_connections: NonZeroUsize,
+}
+
+impl Default for ConnectionLimits {
+    fn default() -> Self {
+        Self {
+            header_read_timeout: Duration::from_secs(10),
+            max_connections: NonZeroUsize::new(1024).expect("1024 is not zero"),
+        }
+    }
+}
+
+/// Like [`serve_until`], with explicit [`ConnectionLimits`].
+///
+/// Connections are served over HTTP/1.1 by hyper directly, because `axum::serve` has no header
+/// timeout and no cap. When `shutdown` completes the server stops accepting, closes idle
+/// connections and lets requests in flight finish.
+///
+/// # Errors
+///
+/// Never fails today; the `Result` keeps the signature of [`serve_until`].
+pub async fn serve_with_limits(
+    listener: TcpListener,
+    app: Router,
+    limits: ConnectionLimits,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    let permits = Arc::new(Semaphore::new(limits.max_connections.get()));
+    let graceful = GracefulShutdown::new();
+    let mut shutdown = std::pin::pin!(shutdown);
+    loop {
+        let (stream, peer) = tokio::select! {
+            () = &mut shutdown => break,
+            accepted = listener.accept() => match accepted {
+                Ok(connection) => connection,
+                Err(error) => {
+                    // Out of file descriptors and the like: back off instead of spinning.
+                    eprintln!("reference-store: accept failed: {error}");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    continue;
+                }
+            },
+        };
+        // The slot is taken before anything is read, so a flood cannot queue behind the cap.
+        let Ok(permit) = permits.clone().try_acquire_owned() else {
+            drop(stream);
+            continue;
+        };
+        let service = TowerToHyperService::new(app.clone().layer(from_fn(
+            move |mut request: Request, next: Next| async move {
+                request.extensions_mut().insert(ConnectInfo(peer));
+                next.run(request).await
+            },
+        )));
+        let connection = http1::Builder::new()
+            .timer(TokioTimer::new())
+            .header_read_timeout(limits.header_read_timeout)
+            .serve_connection(TokioIo::new(stream), service);
+        let watched = graceful.watch(connection);
+        tokio::spawn(async move {
+            // A client that disconnects mid-request is not an error worth reporting.
+            let _ = watched.await;
+            drop(permit);
+        });
+    }
+    graceful.shutdown().await;
+    Ok(())
 }

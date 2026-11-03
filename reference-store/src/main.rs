@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use reference_store::{AllowedHost, StoreConfig, app, serve_until};
+use reference_store::{AllowedHost, ConnectionLimits, StoreConfig, app, serve_with_limits};
 use tokio::net::TcpListener;
 
 /// Serve the demo bicycle-parts catalog to AI assistants over MCP (Streamable HTTP).
@@ -38,6 +38,13 @@ struct Args {
     /// Seconds one /mcp request may take before it gets 504.
     #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..))]
     request_timeout_secs: u64,
+    /// Seconds a client may take to send a request's line and headers before the connection is
+    /// closed.
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..))]
+    header_read_timeout_secs: u64,
+    /// Most connections open at once; a connection over the cap is closed without an answer.
+    #[arg(long, default_value = "1024")]
+    max_connections: NonZeroUsize,
     /// Seed of the generated catalog.
     #[arg(long, default_value_t = catalog::DEMO_SEED)]
     seed: u64,
@@ -81,7 +88,11 @@ async fn run(args: Args) -> std::io::Result<()> {
         "reference-store: {} parts, MCP endpoint http://{local}/mcp",
         catalog.parts().len()
     );
-    serve_until(listener, app(catalog, &config), shutdown_signal()).await?;
+    let limits = ConnectionLimits {
+        header_read_timeout: std::time::Duration::from_secs(args.header_read_timeout_secs),
+        max_connections: args.max_connections,
+    };
+    serve_with_limits(listener, app(catalog, &config), limits, shutdown_signal()).await?;
     println!("reference-store: shut down");
     Ok(())
 }
@@ -126,6 +137,16 @@ mod tests {
     fn a_zero_in_flight_cap_is_rejected() {
         let refused = Args::try_parse_from(["reference-store", "--max-in-flight", "0"]);
         assert!(refused.is_err());
+    }
+
+    #[test]
+    fn a_zero_connection_cap_or_header_timeout_is_rejected() {
+        for flag in ["--max-connections", "--header-read-timeout-secs"] {
+            assert!(
+                Args::try_parse_from(["reference-store", flag, "0"]).is_err(),
+                "{flag}"
+            );
+        }
     }
 
     #[test]

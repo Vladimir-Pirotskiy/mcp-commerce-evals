@@ -1148,6 +1148,8 @@ dependencies = [
  "axum",
  "catalog",
  "clap",
+ "hyper",
+ "hyper-util",
  "reqwest",
  "rmcp",
  "schemars",
