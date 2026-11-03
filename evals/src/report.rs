@@ -229,7 +229,7 @@ fn assistant_row(label: &str, s: &AssistantSummary) -> String {
 #[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {}{} ({})\n\n| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        "Model: {}{} ({})\n\n| kind | runs | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
         report.model,
         if report.response_models.is_empty() {
             String::new()

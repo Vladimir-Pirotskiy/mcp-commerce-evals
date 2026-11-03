@@ -356,7 +356,7 @@ rendered from a committed file is missing from this README.
 **claude-haiku-5-5**, 3 trials per query: pass@1 0.94, pass@2 0.95, pass@3 0.95. Tokens over all 132
 runs: 1,196,419 input and 76,890 output.
 
-| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
+| kind | runs | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | adversarial | 3 | 0.67 (n/a) | 0.67 | 1.00 | 1 | 0 | 0 | 0 | 3.7 | 42451 | 2869 |
 | compatibility | 24 | 0.88 (n/a) | 0.88 | 0.96 | 0 | 3 | 0 | 0 | 1.5 | 197436 | 15026 |
@@ -370,7 +370,7 @@ runs: 1,196,419 input and 76,890 output.
 
 **claude-sonnet-5-5**, 1 trial per query. Tokens over all 44 runs: 473,526 input and 19,703 output.
 
-| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
+| kind | runs | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | adversarial | 1 | 1.00 (0.21-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 4.0 | 15318 | 590 |
 | compatibility | 8 | 0.88 (0.53-0.98) | 0.88 | 1.00 | 1 | 0 | 0 | 0 | 2.4 | 94324 | 4390 |

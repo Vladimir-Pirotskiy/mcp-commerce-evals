@@ -85,7 +85,7 @@ fn the_readme_tables_are_what_the_current_code_renders_from_the_results() {
         let wanted = if name.starts_with("tool-level") {
             "| kind | queries | hit@1"
         } else {
-            "| kind | queries | committed answer"
+            "| kind | runs | committed answer"
         };
         let table = tables(&text)
             .into_iter()
