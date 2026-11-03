@@ -6,7 +6,10 @@
 
 pub mod assistant;
 pub mod error;
+pub mod gate;
+pub mod hash;
 pub mod mcp;
+pub mod meta;
 pub mod metrics;
 pub mod queries;
 pub mod report;

@@ -5,34 +5,59 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 use crate::mcp::McpClient;
-use crate::metrics::normalize;
+use crate::metrics::{normalize, share};
 use crate::queries::Query;
 
 /// Production endpoint of the API.
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 /// Model used when none is given.
 pub const DEFAULT_MODEL: &str = "claude-haiku-5-5";
+/// Sampling temperature of every request, fixed so that a rerun differs as little as possible.
+pub const TEMPERATURE: f64 = 0.0;
+/// The system prompt. It is the same for every store: only the committed `ANSWER:` line is scored.
+pub const SYSTEM_PROMPT: &str = "You are a shopping assistant for an online store. \
+Use the store's tools to find products; never guess a part number. When you have chosen, give \
+one sentence on why the product fits, then end your reply with a final line of exactly \
+`ANSWER: <part id>`, the id of the single best match as the store lists it, or `ANSWER: none` \
+if nothing the store sells fits. You cannot pay: if the buyer wants to buy, create a cart and \
+give them the checkout link.";
+/// Prefix of the line that commits to an answer.
+const ANSWER_PREFIX: &str = "ANSWER:";
+/// The committed value that means the model found nothing suitable.
+const ANSWER_NONE: &str = "none";
 const API_VERSION: &str = "2023-06-01";
 const MAX_TOKENS: u32 = 1024;
 const MAX_ERROR_CHARS: usize = 200;
-const SYSTEM_PROMPT: &str = "You are a shopping assistant for an online bicycle-parts store. \
-Use the store's tools to find parts; never guess a part number. When you have chosen, reply with \
-the part number of the single best match and one sentence on why it fits. You cannot pay: if the \
-buyer wants to buy, create a cart and give them the checkout link.";
+/// Retries after the first attempt, for HTTP 429, 529 and 5xx.
+const MAX_RETRIES: u32 = 3;
+/// First backoff step; each retry doubles it.
+const DEFAULT_BACKOFF_BASE: Duration = Duration::from_millis(500);
+/// Longest wait honoured, whatever `retry-after` asks for.
+const MAX_RETRY_DELAY: Duration = Duration::from_secs(60);
+/// Overloaded: the API's own status for "try again shortly".
+const STATUS_OVERLOADED: u16 = 529;
 
 /// An API key that never shows up in `Debug` output.
 pub struct ApiKey(String);
 
 impl ApiKey {
-    /// Wraps a key read from the environment.
-    pub fn new(key: String) -> Self {
-        Self(key)
+    /// Wraps a key read from the environment; an empty or blank key is refused up front.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the key is empty or blank.
+    pub fn new(key: String) -> Result<Self> {
+        if key.trim().is_empty() {
+            return Err(Error::Input("ANTHROPIC_API_KEY is empty".to_owned()));
+        }
+        Ok(Self(key))
     }
 }
 
@@ -49,44 +74,116 @@ pub struct Anthropic {
     base_url: String,
     key: ApiKey,
     model: String,
+    backoff_base: Duration,
 }
 
 impl Anthropic {
-    /// A client that talks to `base_url` as `model`.
-    pub fn new(key: ApiKey, model: &str, base_url: &str) -> Self {
-        Self {
-            http: reqwest::Client::new(),
+    /// A client that talks to `base_url` as `model`; each request gives up after `timeout`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the HTTP client cannot be built.
+    pub fn new(key: ApiKey, model: &str, base_url: &str, timeout: Duration) -> Result<Self> {
+        Ok(Self {
+            http: reqwest::Client::builder().timeout(timeout).build()?,
             base_url: base_url.trim_end_matches('/').to_owned(),
             key,
             model: model.to_owned(),
+            backoff_base: DEFAULT_BACKOFF_BASE,
+        })
+    }
+
+    /// Replaces the first backoff step, so tests need not wait for real delays.
+    #[must_use]
+    pub fn with_backoff_base(mut self, base: Duration) -> Self {
+        self.backoff_base = base;
+        self
+    }
+
+    /// The model this client asks.
+    #[must_use]
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Sends one Messages request, retrying 429, 529 and 5xx up to [`MAX_RETRIES`] times.
+    async fn create(&self, body: &Value) -> Result<Value> {
+        let mut attempt = 0;
+        loop {
+            let response = self
+                .http
+                .post(format!("{}/v1/messages", self.base_url))
+                .header("x-api-key", &self.key.0)
+                .header("anthropic-version", API_VERSION)
+                .json(body)
+                .send()
+                .await?;
+            let status = response.status();
+            let retry_after = retry_after(response.headers());
+            let reply: Value = response.json().await.unwrap_or(Value::Null);
+            if status.is_success() {
+                return Ok(reply);
+            }
+            if is_retryable(status.as_u16()) && attempt < MAX_RETRIES {
+                tokio::time::sleep(retry_after.unwrap_or_else(|| self.backoff(attempt))).await;
+                attempt += 1;
+                continue;
+            }
+            return Err(Error::Api {
+                status: status.as_u16(),
+                message: self.redact(reply["error"]["message"].as_str()),
+            });
         }
     }
 
-    async fn create(&self, body: &Value) -> Result<Value> {
-        let response = self
-            .http
-            .post(format!("{}/v1/messages", self.base_url))
-            .header("x-api-key", &self.key.0)
-            .header("anthropic-version", API_VERSION)
-            .json(body)
-            .send()
-            .await?;
-        let status = response.status();
-        let reply: Value = response.json().await.unwrap_or(Value::Null);
-        if status.is_success() {
-            return Ok(reply);
-        }
-        let reason = reply["error"]["message"]
-            .as_str()
-            .unwrap_or("no error message");
-        let reason: String = reason.chars().take(MAX_ERROR_CHARS).collect();
-        Err(Error::Protocol(format!(
-            "the API answered HTTP {status}: {reason}"
-        )))
+    /// Exponential backoff with jitter: half the step is fixed, the other half is random.
+    fn backoff(&self, attempt: u32) -> Duration {
+        let step = self
+            .backoff_base
+            .saturating_mul(1 << attempt)
+            .min(MAX_RETRY_DELAY);
+        let half = step / 2;
+        let jitter_nanos = u64::from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.subsec_nanos()),
+        );
+        let span = u64::try_from(half.as_nanos())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        half + Duration::from_nanos(jitter_nanos % span)
+    }
+
+    /// An API error message, shortened, with the key blanked in case the API echoed it.
+    fn redact(&self, message: Option<&str>) -> String {
+        message
+            .unwrap_or("no error message")
+            .replace(&self.key.0, "[redacted]")
+            .chars()
+            .take(MAX_ERROR_CHARS)
+            .collect()
     }
 }
 
+/// Whether the API asks the caller to try again: rate limited, overloaded or a server fault.
+fn is_retryable(status: u16) -> bool {
+    status == 429 || status == STATUS_OVERLOADED || (500..600).contains(&status)
+}
+
+/// The wait a `retry-after` header (whole seconds) asks for, capped at [`MAX_RETRY_DELAY`].
+fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let seconds: u64 = headers
+        .get("retry-after")?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    Some(Duration::from_secs(seconds).min(MAX_RETRY_DELAY))
+}
+
 /// MCP tool definitions in the shape the Messages API wants.
+#[must_use]
 pub fn api_tools(mcp_tools: &[Value]) -> Vec<Value> {
     mcp_tools
         .iter()
@@ -111,10 +208,18 @@ pub struct AssistantResult {
     pub text: String,
     /// Part ids that count as right.
     pub expected: Vec<String>,
-    /// The model's final answer.
+    /// The model's final reply, or its last partial reply when it did not finish.
     pub final_answer: String,
-    /// Whether the final answer names an expected part.
-    pub named_expected: bool,
+    /// What the `ANSWER:` line committed to (`none` included); absent when there was no line.
+    pub committed: Option<String>,
+    /// Whether the committed id equals an expected id, ignoring case and punctuation.
+    pub correct: bool,
+    /// Diagnostic only: whether the reply mentions an expected id anywhere.
+    pub mentions_expected: bool,
+    /// Whether the model ended its turn (`end_turn`) with a final reply.
+    pub answered: bool,
+    /// The `stop_reason` of the last reply received.
+    pub stop_reason: Option<String>,
     /// Tool calls the model made.
     pub tool_calls: u32,
     /// Which tools, in order.
@@ -125,14 +230,34 @@ pub struct AssistantResult {
     pub input_tokens: u64,
     /// Output tokens over all turns.
     pub output_tokens: u64,
-    /// Why the run failed, when it did.
+    /// Why the run failed (API or transport), when it did.
     pub error: Option<String>,
 }
 
 /// Whether `answer` contains one of the expected part ids, ignoring case and punctuation.
+#[must_use]
 pub fn names_expected(answer: &str, expected: &[String]) -> bool {
     let answer = normalize(answer);
     expected.iter().any(|id| answer.contains(&normalize(id)))
+}
+
+/// What the last non-empty line of a reply commits to, if it is an `ANSWER:` line. Markdown
+/// emphasis around the line is ignored.
+#[must_use]
+pub fn committed_answer(reply: &str) -> Option<String> {
+    let line = reply.lines().rev().find(|line| !line.trim().is_empty())?;
+    let line = line.trim_matches(|c: char| c.is_whitespace() || c == '*' || c == '`');
+    let value = line.strip_prefix(ANSWER_PREFIX)?;
+    let value = value.trim_matches(|c: char| c.is_whitespace() || c == '*' || c == '`');
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
+/// Whether a committed answer is exactly one of the expected ids (after normalising both).
+#[must_use]
+pub fn is_correct(committed: Option<&str>, expected: &[String]) -> bool {
+    committed.is_some_and(|value| {
+        value != ANSWER_NONE && expected.iter().any(|id| normalize(id) == normalize(value))
+    })
 }
 
 fn text_of(content: &[Value]) -> String {
@@ -141,6 +266,43 @@ fn text_of(content: &[Value]) -> String {
         .filter_map(|b| b["text"].as_str())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// What a reply's `stop_reason` means for the loop.
+#[derive(Debug, PartialEq, Eq)]
+enum Next {
+    /// `end_turn`: the reply is the final answer.
+    Answer,
+    /// `tool_use`: run the requested tools and ask again.
+    RunTools,
+    /// `max_tokens`, `refusal`, `pause_turn`, a missing or unknown reason: no answer.
+    GiveUp,
+}
+
+fn next_step(stop_reason: Option<&str>) -> Next {
+    match stop_reason {
+        Some("end_turn") => Next::Answer,
+        Some("tool_use") => Next::RunTools,
+        _ => Next::GiveUp,
+    }
+}
+
+async fn run_tools(mcp: &mut McpClient, calls: &[&Value], result: &mut AssistantResult) -> Value {
+    let mut answers = Vec::with_capacity(calls.len());
+    for call in calls {
+        let name = call["name"].as_str().unwrap_or_default();
+        result.tool_calls += 1;
+        result.tools_used.push(name.to_owned());
+        let (text, is_error) = match mcp.call_tool(name, call["input"].clone()).await {
+            Ok(output) => (output.text, output.is_error),
+            Err(e) => (e.to_string(), true),
+        };
+        answers.push(json!({
+            "type": "tool_result", "tool_use_id": call["id"], "content": text,
+            "is_error": is_error,
+        }));
+    }
+    Value::Array(answers)
 }
 
 async fn converse(
@@ -154,42 +316,36 @@ async fn converse(
     let mut messages = vec![json!({ "role": "user", "content": query.text })];
     for _ in 0..max_turns {
         let body = json!({
-            "model": api.model, "max_tokens": MAX_TOKENS, "system": SYSTEM_PROMPT,
-            "tools": tools, "messages": messages,
+            "model": api.model, "max_tokens": MAX_TOKENS, "temperature": TEMPERATURE,
+            "system": SYSTEM_PROMPT, "tools": tools, "messages": messages,
         });
         let reply = api.create(&body).await?;
         result.turns += 1;
         result.input_tokens += reply["usage"]["input_tokens"].as_u64().unwrap_or(0);
         result.output_tokens += reply["usage"]["output_tokens"].as_u64().unwrap_or(0);
+        result.stop_reason = reply["stop_reason"].as_str().map(str::to_owned);
         let content = reply["content"].as_array().cloned().unwrap_or_default();
+        result.final_answer = text_of(&content);
         messages.push(json!({ "role": "assistant", "content": content }));
+        match next_step(result.stop_reason.as_deref()) {
+            Next::Answer => {
+                result.answered = true;
+                return Ok(());
+            }
+            Next::GiveUp => return Ok(()),
+            Next::RunTools => {}
+        }
         let calls: Vec<&Value> = content.iter().filter(|b| b["type"] == "tool_use").collect();
         if calls.is_empty() {
-            result.final_answer = text_of(&content);
             return Ok(());
         }
-        let mut answers = Vec::with_capacity(calls.len());
-        for call in calls {
-            let name = call["name"].as_str().unwrap_or_default();
-            result.tool_calls += 1;
-            result.tools_used.push(name.to_owned());
-            let (text, is_error) = match mcp.call_tool(name, call["input"].clone()).await {
-                Ok(output) => (output.text, output.is_error),
-                Err(e) => (e.to_string(), true),
-            };
-            answers.push(json!({
-                "type": "tool_result", "tool_use_id": call["id"], "content": text,
-                "is_error": is_error,
-            }));
-        }
+        let answers = run_tools(mcp, &calls, result).await;
         messages.push(json!({ "role": "user", "content": answers }));
     }
-    Err(Error::Protocol(format!(
-        "no final answer after {max_turns} turns"
-    )))
+    Ok(())
 }
 
-/// Lets the model answer one query, then scores the answer.
+/// Lets the model answer one query, then scores the committed answer.
 pub async fn answer(
     api: &Anthropic,
     mcp: &mut McpClient,
@@ -203,7 +359,11 @@ pub async fn answer(
         text: query.text.clone(),
         expected: query.expected.clone(),
         final_answer: String::new(),
-        named_expected: false,
+        committed: None,
+        correct: false,
+        mentions_expected: false,
+        answered: false,
+        stop_reason: None,
         tool_calls: 0,
         tools_used: Vec::new(),
         turns: 0,
@@ -214,7 +374,11 @@ pub async fn answer(
     if let Err(e) = converse(api, mcp, tools, query, max_turns, &mut result).await {
         result.error = Some(e.to_string());
     }
-    result.named_expected = names_expected(&result.final_answer, &query.expected);
+    result.mentions_expected = names_expected(&result.final_answer, &query.expected);
+    if result.answered {
+        result.committed = committed_answer(&result.final_answer);
+        result.correct = is_correct(result.committed.as_deref(), &query.expected);
+    }
     result
 }
 
@@ -223,16 +387,23 @@ pub async fn answer(
 pub struct AssistantSummary {
     /// Number of queries.
     pub n: usize,
-    /// Share of queries whose final answer names an expected part.
+    /// Share of all queries whose committed answer is an expected id; an API error is a miss.
     pub answer_accuracy: f64,
+    /// The same share over the queries that had no API error.
+    pub answer_accuracy_without_errors: f64,
+    /// Diagnostic: share of queries whose reply mentions an expected id anywhere.
+    pub mentions_expected: f64,
+    /// Queries that ended without a final answer (a stop reason other than `end_turn`, or the
+    /// turn limit) and had no API error.
+    pub unanswered: usize,
+    /// Queries that ended in an API or transport error.
+    pub errors: usize,
     /// Mean tool calls per query.
     pub mean_tool_calls: f64,
     /// Input tokens over all queries.
     pub input_tokens: u64,
     /// Output tokens over all queries.
     pub output_tokens: u64,
-    /// Queries that ended in an error.
-    pub errors: usize,
 }
 
 /// Assistant-level results, per kind and overall, with the per-query detail.
@@ -240,6 +411,8 @@ pub struct AssistantSummary {
 pub struct AssistantReport {
     /// Model that answered.
     pub model: String,
+    /// Sampling temperature that was sent.
+    pub temperature: f64,
     /// Scores over every query.
     pub overall: AssistantSummary,
     /// Scores per query kind.
@@ -250,64 +423,164 @@ pub struct AssistantReport {
 
 fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
     let n = results.len();
-    let per = |count: f64| if n == 0 { 0.0 } else { count / n as f64 };
+    let count = |keep: fn(&AssistantResult) -> bool| results.iter().filter(|r| keep(r)).count();
+    let errors = count(|r| r.error.is_some());
     AssistantSummary {
         n,
-        answer_accuracy: per(results.iter().filter(|r| r.named_expected).count() as f64),
-        mean_tool_calls: per(results.iter().map(|r| f64::from(r.tool_calls)).sum()),
+        answer_accuracy: share(count(|r| r.correct), n),
+        answer_accuracy_without_errors: share(count(|r| r.correct), n - errors),
+        mentions_expected: share(count(|r| r.mentions_expected), n),
+        unanswered: count(|r| r.error.is_none() && !r.answered),
+        errors,
+        mean_tool_calls: share(results.iter().map(|r| r.tool_calls as usize).sum(), n),
         input_tokens: results.iter().map(|r| r.input_tokens).sum(),
         output_tokens: results.iter().map(|r| r.output_tokens).sum(),
-        errors: results.iter().filter(|r| r.error.is_some()).count(),
     }
 }
 
-/// Runs every query through the model, in file order.
+impl AssistantReport {
+    /// Builds the report for the results gathered so far.
+    #[must_use]
+    pub fn from_results(model: &str, results: Vec<AssistantResult>) -> Self {
+        let mut kinds: BTreeMap<String, Vec<&AssistantResult>> = BTreeMap::new();
+        for result in &results {
+            kinds.entry(result.kind.clone()).or_default().push(result);
+        }
+        Self {
+            model: model.to_owned(),
+            temperature: TEMPERATURE,
+            overall: summarize(&results.iter().collect::<Vec<_>>()),
+            by_kind: kinds
+                .iter()
+                .map(|(kind, rs)| (kind.clone(), summarize(rs)))
+                .collect(),
+            queries: results,
+        }
+    }
+}
+
+/// Runs every query through the model, in file order. After each query `on_progress` receives
+/// the report so far, so a caller can save partial results of a paid run that fails midway.
+///
+/// # Errors
+///
+/// Fails when the store's tool list cannot be read, or when `on_progress` fails.
 pub async fn run(
     api: &Anthropic,
     mcp: &mut McpClient,
     queries: &[Query],
     max_turns: u32,
+    mut on_progress: impl FnMut(&AssistantReport) -> Result<()>,
 ) -> Result<AssistantReport> {
     let tools = api_tools(&mcp.list_tools().await?);
     let mut results = Vec::with_capacity(queries.len());
     for query in queries {
         results.push(answer(api, mcp, &tools, query, max_turns).await);
+        on_progress(&AssistantReport::from_results(&api.model, results.clone()))?;
     }
-    let mut kinds: BTreeMap<String, Vec<&AssistantResult>> = BTreeMap::new();
-    for result in &results {
-        kinds.entry(result.kind.clone()).or_default().push(result);
-    }
-    Ok(AssistantReport {
-        model: api.model.clone(),
-        overall: summarize(&results.iter().collect::<Vec<_>>()),
-        by_kind: kinds
-            .iter()
-            .map(|(kind, rs)| (kind.clone(), summarize(rs)))
-            .collect(),
-        queries: results,
-    })
+    Ok(AssistantReport::from_results(&api.model, results))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_key_is_redacted_in_debug_output() {
-        let api = Anthropic::new(ApiKey::new("sk-secret-value".to_owned()), "m", "http://x");
-        assert!(!format!("{api:?}").contains("sk-secret-value"));
+    fn client(key: &str) -> Anthropic {
+        Anthropic::new(
+            ApiKey::new(key.to_owned()).unwrap(),
+            "m",
+            "http://x",
+            Duration::from_secs(1),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn an_answer_names_a_part_in_any_spelling() {
+    fn the_key_is_redacted_in_debug_output() {
+        assert!(!format!("{:?}", client("sk-secret-value")).contains("sk-secret-value"));
+    }
+
+    #[test]
+    fn an_empty_or_blank_key_is_rejected() {
+        assert!(ApiKey::new(String::new()).is_err());
+        assert!(ApiKey::new("  ".to_owned()).is_err());
+    }
+
+    #[test]
+    fn an_api_error_message_has_the_key_blanked() {
+        let message = client("sk-secret").redact(Some("bad key sk-secret given"));
+        assert_eq!(message, "bad key [redacted] given");
+    }
+
+    #[test]
+    fn mentions_find_an_id_in_any_spelling() {
         let expected = ["ALD-CH-1002".to_owned()];
         assert!(names_expected(
             "Get the chain ald ch 1002, it fits.",
             &expected
         ));
-        assert!(names_expected("**ALD-CH-1002**", &expected));
         assert!(!names_expected("Get ALD-CH-1003 instead.", &expected));
         assert!(!names_expected("", &expected));
+    }
+
+    #[test]
+    fn reads_the_committed_id_from_the_last_line() {
+        assert_eq!(
+            committed_answer("It fits.\nANSWER: ALD-CH-1002\n"),
+            Some("ALD-CH-1002".to_owned())
+        );
+        assert_eq!(
+            committed_answer("Why.\n**ANSWER: ALD-CH-1002**"),
+            Some("ALD-CH-1002".to_owned())
+        );
+        assert_eq!(committed_answer("ANSWER: none"), Some("none".to_owned()));
+    }
+
+    #[test]
+    fn a_reply_without_a_final_answer_line_commits_to_nothing() {
+        assert_eq!(committed_answer("Take ALD-CH-1002."), None);
+        assert_eq!(committed_answer("ANSWER: X-1\nand more words"), None);
+        assert_eq!(committed_answer("ANSWER:"), None);
+        assert_eq!(committed_answer(""), None);
+    }
+
+    #[test]
+    fn only_an_exact_normalised_id_is_correct() {
+        let expected = ["ALD-CH-1002".to_owned()];
+        assert!(is_correct(Some("ald ch 1002"), &expected));
+        assert!(!is_correct(Some("ALD-CH-10021"), &expected));
+        assert!(!is_correct(Some("none"), &expected));
+        assert!(!is_correct(None, &expected));
+    }
+
+    #[test]
+    fn only_end_turn_is_an_answer_and_only_tool_use_continues() {
+        assert_eq!(next_step(Some("end_turn")), Next::Answer);
+        assert_eq!(next_step(Some("tool_use")), Next::RunTools);
+        for other in ["max_tokens", "refusal", "pause_turn", "stop_sequence"] {
+            assert_eq!(next_step(Some(other)), Next::GiveUp, "{other}");
+        }
+        assert_eq!(next_step(None), Next::GiveUp);
+    }
+
+    #[test]
+    fn only_rate_limit_overload_and_server_faults_are_retried() {
+        for status in [429, 529, 500, 503] {
+            assert!(is_retryable(status), "{status}");
+        }
+        for status in [400, 401, 403, 404] {
+            assert!(!is_retryable(status), "{status}");
+        }
+    }
+
+    #[test]
+    fn backoff_doubles_and_stays_within_its_jitter_band() {
+        let api = client("k").with_backoff_base(Duration::from_millis(100));
+        for attempt in 0..3 {
+            let step = Duration::from_millis(100 << attempt);
+            let delay = api.backoff(attempt);
+            assert!(delay >= step / 2 && delay <= step, "{attempt}: {delay:?}");
+        }
     }
 
     #[test]

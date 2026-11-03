@@ -1,20 +1,23 @@
 //! Tool-level eval: call the store's search tool for every query and score the ranking.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
-use crate::error::Result;
+use crate::error::{Error, Result, ShapeProblem};
 use crate::mcp::{McpClient, ToolOutput};
-use crate::metrics::{Summary, rank_of, summarize};
+use crate::metrics::{Summary, normalize, rank_of, summarize};
 use crate::queries::Query;
 
 /// Keys under which a search result list is looked up, in order.
 const LIST_KEYS: [&str; 4] = ["results", "products", "items", "hits"];
 /// Keys that hold a product's identifier, in order.
 const ID_KEYS: [&str; 4] = ["id", "sku", "part_number", "product_id"];
+
+/// The query kind whose expected sets are defined by the structured arguments.
+pub const FILTER_KIND: &str = "filter";
 
 /// How the search tool is called.
 #[derive(Debug, Clone)]
@@ -23,6 +26,9 @@ pub struct Options {
     pub search_tool: String,
     /// How many results to ask for (sent as `limit` unless the query sets its own).
     pub top_k: usize,
+    /// How many timed calls to make per query; one extra, untimed call warms the connection up
+    /// before the first query.
+    pub repeat: usize,
 }
 
 /// The outcome of one query.
@@ -36,12 +42,13 @@ pub struct QueryResult {
     pub text: String,
     /// Part ids that count as right.
     pub expected: Vec<String>,
-    /// Part ids the store returned, best first.
-    pub returned: Vec<String>,
+    /// Part ids the store returned, best first, at most `top_k`; `None` marks an entry without
+    /// a recognisable id.
+    pub returned: Vec<Option<String>>,
     /// 1-based rank of the best expected id among the results, if any.
     pub rank: Option<usize>,
-    /// Round-trip time of the search call in milliseconds.
-    pub latency_ms: f64,
+    /// Round-trip time in milliseconds of each timed call; empty when the query errored.
+    pub latencies_ms: Vec<f64>,
     /// Why the call failed, when it did.
     pub error: Option<String>,
 }
@@ -51,31 +58,50 @@ pub struct QueryResult {
 pub struct ToolLevelReport {
     /// Scores over every query.
     pub overall: Summary,
+    /// Scores over every query except `filter` ones, which pass structured arguments that
+    /// define their own expected sets and so test filtering rather than ranking.
+    pub overall_without_filter: Summary,
     /// Scores per query kind.
     pub by_kind: BTreeMap<String, Summary>,
     /// One entry per query.
     pub queries: Vec<QueryResult>,
 }
 
-/// Ids of the products in a search reply: the first list under `results`, `products`, `items` or
-/// `hits`, read from `structuredContent` or else from the text block, taking each entry's `id`,
-/// `sku`, `part_number` or `product_id`.
-pub fn result_ids(output: &ToolOutput) -> Vec<String> {
+/// The list of products in a search reply: the first array under `results`, `products`, `items`
+/// or `hits`, read from `structuredContent` or else from the JSON text block.
+fn product_list(output: &ToolOutput) -> Result<Vec<Value>> {
     let parsed;
-    let body = match &output.structured {
-        Some(value) => value,
-        None => {
-            parsed = serde_json::from_str::<Value>(&output.text).unwrap_or(Value::Null);
-            &parsed
-        }
+    let body = if let Some(value) = &output.structured {
+        value
+    } else {
+        parsed = serde_json::from_str::<Value>(&output.text)
+            .map_err(|_| Error::Shape(ShapeProblem::NotJson))?;
+        &parsed
     };
-    let Some(list) = LIST_KEYS.iter().find_map(|key| body.get(key)?.as_array()) else {
-        return Vec::new();
-    };
-    list.iter()
-        .filter_map(|entry| ID_KEYS.iter().find_map(|key| entry.get(key)?.as_str()))
-        .map(str::to_owned)
-        .collect()
+    LIST_KEYS
+        .iter()
+        .find_map(|key| body.get(key)?.as_array())
+        .cloned()
+        .ok_or(Error::Shape(ShapeProblem::NoResultList))
+}
+
+/// Ids of the first `top_k` products in a search reply, best first, so a store that ignores
+/// `limit` cannot change the score. An entry with no `id`, `sku`, `part_number` or `product_id`
+/// stays in the list as `None`, because it still occupies a rank. A repeated id keeps only its
+/// first position. A reply that is not a recognisable product list is an error.
+///
+/// # Errors
+///
+/// Fails when the reply is not a recognisable product list.
+pub fn result_ids(output: &ToolOutput, top_k: usize) -> Result<Vec<Option<String>>> {
+    let mut seen = HashSet::new();
+    Ok(product_list(output)?
+        .iter()
+        .take(top_k)
+        .map(|entry| ID_KEYS.iter().find_map(|key| entry.get(key)?.as_str()))
+        .filter(|id| id.is_none_or(|id| seen.insert(normalize(id))))
+        .map(|id| id.map(str::to_owned))
+        .collect())
 }
 
 fn arguments(query: &Query, top_k: usize) -> Value {
@@ -87,17 +113,48 @@ fn arguments(query: &Query, top_k: usize) -> Value {
     Value::Object(args)
 }
 
-async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> QueryResult {
+/// One timed search call, with its reply read as a ranking.
+async fn search_ids(
+    mcp: &mut McpClient,
+    query: &Query,
+    options: &Options,
+) -> (Result<Vec<Option<String>>>, f64) {
     let started = Instant::now();
     let outcome = mcp
         .call_tool(&options.search_tool, arguments(query, options.top_k))
         .await;
     let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let (returned, error) = match outcome {
-        Ok(output) if output.is_error => (Vec::new(), Some(output.text)),
-        Ok(output) => (result_ids(&output), None),
-        Err(e) => (Vec::new(), Some(e.to_string())),
+    let ids = match outcome {
+        Ok(output) if output.is_error => Err(Error::Protocol(output.text)),
+        Ok(output) => result_ids(&output, options.top_k),
+        Err(e) => Err(e),
     };
+    (ids, latency_ms)
+}
+
+/// Calls the search tool `options.repeat` times for one query. The first reply is ranked; any
+/// failed call makes the whole query an error, so a flaky store cannot score well.
+async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> QueryResult {
+    let mut returned = Vec::new();
+    let mut latencies_ms = Vec::with_capacity(options.repeat);
+    let mut error = None;
+    for call in 0..options.repeat.max(1) {
+        let (outcome, latency_ms) = search_ids(mcp, query, options).await;
+        match outcome {
+            Ok(ids) => {
+                latencies_ms.push(latency_ms);
+                if call == 0 {
+                    returned = ids;
+                }
+            }
+            Err(e) => {
+                error = Some(e.to_string());
+                returned.clear();
+                latencies_ms.clear();
+                break;
+            }
+        }
+    }
     QueryResult {
         id: query.id.clone(),
         kind: query.kind.clone(),
@@ -105,17 +162,18 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
         expected: query.expected.clone(),
         rank: rank_of(&returned, &query.expected),
         returned,
-        latency_ms,
+        latencies_ms,
         error,
     }
 }
 
-/// Runs every query once, in file order.
-pub async fn run(
-    mcp: &mut McpClient,
-    queries: &[Query],
-    options: &Options,
-) -> Result<ToolLevelReport> {
+/// Runs every query in file order, after one untimed warm-up call.
+pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> ToolLevelReport {
+    if let Some(first) = queries.first() {
+        // The result is deliberately dropped: this call only opens the connection and warms
+        // the store's caches, so the first measured query is not penalised.
+        let _ = search_ids(mcp, first, options).await;
+    }
     let mut results = Vec::with_capacity(queries.len());
     for query in queries {
         results.push(run_one(mcp, query, options).await);
@@ -127,14 +185,20 @@ pub async fn run(
             .or_default()
             .push(result.clone());
     }
-    Ok(ToolLevelReport {
+    let without_filter: Vec<QueryResult> = results
+        .iter()
+        .filter(|r| r.kind != FILTER_KIND)
+        .cloned()
+        .collect();
+    ToolLevelReport {
         overall: summarize(&results),
+        overall_without_filter: summarize(&without_filter),
         by_kind: kinds
             .iter()
             .map(|(kind, rs)| (kind.clone(), summarize(rs)))
             .collect(),
         queries: results,
-    })
+    }
 }
 
 #[cfg(test)]
@@ -149,13 +213,57 @@ mod tests {
         }
     }
 
+    fn ids(output: &ToolOutput, top_k: usize) -> Vec<Option<String>> {
+        result_ids(output, top_k).unwrap()
+    }
+
+    fn some(ids: &[&str]) -> Vec<Option<String>> {
+        ids.iter().map(|id| Some((*id).to_owned())).collect()
+    }
+
     #[test]
-    fn ids_come_from_structured_content_or_the_text_block() {
+    fn reads_ids_from_structured_content_or_the_text_block() {
         let structured = json!({ "results": [{ "id": "A-1" }, { "id": "B-2" }] });
-        assert_eq!(result_ids(&output(Some(structured), "")), ["A-1", "B-2"]);
-        let text = r#"{"products":[{"sku":"X9"},{"id":"Y8"},{"name":"no id"}]}"#;
-        assert_eq!(result_ids(&output(None, text)), ["X9", "Y8"]);
-        assert!(result_ids(&output(None, "not json")).is_empty());
+        assert_eq!(
+            ids(&output(Some(structured), ""), 10),
+            some(&["A-1", "B-2"])
+        );
+        let text = r#"{"products":[{"sku":"X9"},{"id":"Y8"}]}"#;
+        assert_eq!(ids(&output(None, text), 10), some(&["X9", "Y8"]));
+    }
+
+    #[test]
+    fn truncates_results_to_top_k() {
+        let body = json!({ "results": [{ "id": "A" }, { "id": "B" }, { "id": "C" }] });
+        assert_eq!(ids(&output(Some(body), ""), 2), some(&["A", "B"]));
+    }
+
+    #[test]
+    fn keeps_only_the_first_position_of_a_repeated_id() {
+        let body = json!({ "results": [{ "id": "A-1" }, { "id": "a1" }, { "id": "B" }] });
+        assert_eq!(ids(&output(Some(body), ""), 10), some(&["A-1", "B"]));
+    }
+
+    #[test]
+    fn an_entry_without_an_id_keeps_its_rank_position() {
+        let body = json!({ "results": [{ "name": "no id" }, { "id": "B" }] });
+        assert_eq!(
+            ids(&output(Some(body), ""), 10),
+            [None, Some("B".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_reply_without_a_known_list_key_is_an_error() {
+        let body = json!({ "matches": [{ "id": "A" }] });
+        let error = result_ids(&output(Some(body), ""), 10).unwrap_err();
+        assert!(matches!(error, Error::Shape(ShapeProblem::NoResultList)));
+    }
+
+    #[test]
+    fn text_that_is_not_json_is_an_error() {
+        let error = result_ids(&output(None, "not json"), 10).unwrap_err();
+        assert!(matches!(error, Error::Shape(ShapeProblem::NotJson)));
     }
 
     #[test]

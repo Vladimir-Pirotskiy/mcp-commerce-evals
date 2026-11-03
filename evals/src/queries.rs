@@ -1,7 +1,7 @@
 //! The queries file: what buyers ask and which parts count as a right answer.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -25,13 +25,50 @@ pub struct Query {
     pub search: Option<Value>,
 }
 
-/// Reads and validates a queries file (a JSON array of queries).
-pub fn load(path: &Path) -> Result<Vec<Query>> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| Error::Input(format!("cannot read {}: {e}", path.display())))?;
-    let queries: Vec<Query> = serde_json::from_str(&raw)?;
+/// Where the shipped queries file is, relative to the repository root.
+const SHIPPED_QUERIES: &str = "evals/queries.json";
+/// Where the shipped queries file was when this binary was built from source.
+const BUILD_TIME_QUERIES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/queries.json");
+
+/// The queries file to use when none is given: the shipped one under the current directory,
+/// else the copy in the source tree this binary was built from.
+#[must_use]
+pub fn default_path() -> PathBuf {
+    prefer_existing(Path::new(SHIPPED_QUERIES), Path::new(BUILD_TIME_QUERIES))
+}
+
+fn prefer_existing(first: &Path, fallback: &Path) -> PathBuf {
+    if first.exists() { first } else { fallback }.to_path_buf()
+}
+
+/// Reads a queries file as text.
+///
+/// # Errors
+///
+/// Fails when the file cannot be read.
+pub fn read_file(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path)
+        .map_err(|e| Error::Input(format!("cannot read {}: {e}", path.display())))
+}
+
+/// Parses and validates a queries file (a JSON array of queries).
+///
+/// # Errors
+///
+/// Fails when the text is not valid JSON of the right shape, or a query is invalid.
+pub fn parse(raw: &str) -> Result<Vec<Query>> {
+    let queries: Vec<Query> = serde_json::from_str(raw)?;
     validate(&queries)?;
     Ok(queries)
+}
+
+/// Reads, parses and validates a queries file.
+///
+/// # Errors
+///
+/// Fails when the file cannot be read or holds an invalid query set.
+pub fn load(path: &Path) -> Result<Vec<Query>> {
+    parse(&read_file(path)?)
 }
 
 fn validate(queries: &[Query]) -> Result<()> {
@@ -66,6 +103,15 @@ mod tests {
     fn parse(json: &str) -> Result<Vec<Query>> {
         let queries: Vec<Query> = serde_json::from_str(json)?;
         validate(&queries).map(|()| queries)
+    }
+
+    #[test]
+    fn the_default_path_falls_back_to_the_build_time_copy() {
+        let missing = Path::new("/no/such/queries.json");
+        let present = Path::new(BUILD_TIME_QUERIES);
+        assert_eq!(prefer_existing(present, missing), present);
+        assert_eq!(prefer_existing(missing, present), present);
+        assert!(default_path().exists());
     }
 
     #[test]

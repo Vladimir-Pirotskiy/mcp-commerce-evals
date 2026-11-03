@@ -4,7 +4,7 @@
   {"id": "q03", "kind": "exact_part_number", "text": "DUNRT8582", "expected": ["DUN-RT-8582"]},
   {"id": "q04", "kind": "exact_part_number", "text": "Do you have part QUI PD 5690?", "expected": ["QUI-PD-5690"]},
   {"id": "q05", "kind": "exact_part_number", "text": "I need ALD-GR-7369 grips", "expected": ["ALD-GR-7369"]},
-  {"id": "q06", "kind": "exact_part_number", "text": "STO-HT-1O64", "expected": ["STO-HT-1064"]},
+  {"id": "q06", "kind": "adversarial", "text": "STO-HT-1O64", "expected": ["STO-HT-1064"]},
   {"id": "q07", "kind": "plain_description", "text": "Pellmoor Tour 175mm flat saddle with chromoly rails", "expected": ["PEL-SD-5881"]},
   {"id": "q08", "kind": "plain_description", "text": "white cork handlebar tape", "expected": ["ROO-HT-8751", "STO-HT-1064"]},
   {"id": "q09", "kind": "plain_description", "text": "34mm grey lock-on grips", "expected": ["ALD-GR-7369"]},

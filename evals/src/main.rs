@@ -1,13 +1,15 @@
 //! `mcp-commerce-evals`: score an MCP store's search tool, and optionally a model shopping on it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey};
 use mcp_commerce_evals::error::{Error, Result};
+use mcp_commerce_evals::gate::{self, Gates};
 use mcp_commerce_evals::mcp::McpClient;
+use mcp_commerce_evals::meta::{AssistantMeta, Meta, RunSettings};
 use mcp_commerce_evals::report::{EvalReport, assistant_markdown, tool_level_markdown};
 use mcp_commerce_evals::{queries, tool_level};
 
@@ -19,15 +21,19 @@ enum Provider {
 }
 
 /// Evaluate an MCP store: tool-level retrieval metrics, plus an optional assistant-level run.
+///
+/// Exit status: 0 on success, 1 when the run could not complete, 2 when any query errored, 3 when
+/// a --min-* gate was not met (the report is written first).
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
     /// MCP endpoint of the store (Streamable HTTP).
     #[arg(long, default_value = "http://127.0.0.1:8787/mcp")]
     url: String,
-    /// Queries file: a JSON array of {id, kind, text, expected, search?}.
-    #[arg(long, default_value = "evals/queries.json")]
-    queries: PathBuf,
+    /// Queries file: a JSON array of {id, kind, text, expected, search?}. Defaults to
+    /// evals/queries.json under the current directory, else the copy in the source tree.
+    #[arg(long)]
+    queries: Option<PathBuf>,
     /// Where to write the JSON report.
     #[arg(long, default_value = "eval-results.json")]
     out: PathBuf,
@@ -43,6 +49,21 @@ struct Args {
     /// Model for the assistant-level run.
     #[arg(long, default_value = assistant::DEFAULT_MODEL)]
     model: String,
+    /// Exit with status 3 when hit@5 over all queries is below this (0 to 1).
+    #[arg(long, value_parser = gate::parse_threshold)]
+    min_hit5: Option<f64>,
+    /// Exit with status 3 when MRR over all queries is below this (0 to 1).
+    #[arg(long, value_parser = gate::parse_threshold)]
+    min_mrr: Option<f64>,
+    /// Replace the report file if it already exists.
+    #[arg(long)]
+    force: bool,
+    /// Timed search calls per query, for latency; one untimed warm-up call precedes them.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
+    repeat: u64,
+    /// Seconds before an HTTP request to the store or the model API gives up.
+    #[arg(long, default_value_t = 60)]
+    timeout_secs: u64,
     /// Most model turns per query in the assistant-level run.
     #[arg(long, default_value_t = 8)]
     max_turns: u32,
@@ -51,7 +72,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> ExitCode {
     match run(Args::parse()).await {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(status) => ExitCode::from(status),
         Err(error) => {
             eprintln!("mcp-commerce-evals: {error}");
             ExitCode::FAILURE
@@ -59,51 +80,107 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(args: Args) -> Result<()> {
-    let queries = queries::load(&args.queries)?;
-    // Read the key before any network traffic so a missing key fails fast.
-    let api = match args.assistant {
+/// The Anthropic client for `--assistant`, built before any traffic so a bad key fails fast.
+fn anthropic_client(args: &Args, timeout: Duration) -> Result<Option<Anthropic>> {
+    match args.assistant {
         Some(Provider::Anthropic) => {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .map_err(|_| Error::Input("ANTHROPIC_API_KEY is not set".to_owned()))?;
-            Some(Anthropic::new(
-                ApiKey::new(key),
+            Anthropic::new(
+                ApiKey::new(key)?,
                 &args.model,
                 assistant::DEFAULT_BASE_URL,
-            ))
+                timeout,
+            )
+            .map(Some)
         }
-        None => None,
-    };
-    let mut mcp = McpClient::connect(&args.url).await?;
+        None => Ok(None),
+    }
+}
+
+async fn run(args: Args) -> Result<u8> {
+    refuse_to_overwrite(&args.out, args.force)?;
+    let timeout = Duration::from_secs(args.timeout_secs);
+    let queries_path = args.queries.clone().unwrap_or_else(queries::default_path);
+    let raw_queries = queries::read_file(&queries_path)?;
+    let queries = queries::parse(&raw_queries)?;
+    let api = anthropic_client(&args, timeout)?;
+    let mut mcp = McpClient::connect(&args.url, timeout).await?;
+    let repeat = usize::try_from(args.repeat).unwrap_or(usize::MAX);
     let options = tool_level::Options {
-        search_tool: args.search_tool,
+        search_tool: args.search_tool.clone(),
         top_k: args.top_k,
+        repeat,
     };
-    let tool_level = tool_level::run(&mut mcp, &queries, &options).await?;
+    let tool_level = tool_level::run(&mut mcp, &queries, &options).await;
     println!("Tool-level ({} queries, {})\n", queries.len(), args.url);
     println!("{}", tool_level_markdown(&tool_level));
 
-    let assistant_level = match &api {
-        Some(api) => {
-            let report = assistant::run(api, &mut mcp, &queries, args.max_turns).await?;
-            println!("Assistant-level\n\n{}", assistant_markdown(&report));
-            Some(report)
-        }
-        None => None,
+    let settings = RunSettings {
+        queries_file: raw_queries.as_bytes(),
+        top_k: args.top_k,
+        repeat,
+        search_tool: &args.search_tool,
+        timeout_secs: args.timeout_secs,
     };
-    let unix_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let report = EvalReport {
-        store_url: args.url,
-        queries_file: args.queries.display().to_string(),
-        unix_time,
+    let assistant_meta = api
+        .as_ref()
+        .map(|_| AssistantMeta::new(&args.model, args.max_turns));
+    let mut report = EvalReport {
+        meta: Meta::new(&settings, mcp.handshake(), assistant_meta),
+        store_url: args.url.clone(),
+        queries_file: queries_path.display().to_string(),
+        unix_time: 0,
+        complete: false,
         tool_level,
-        assistant_level,
+        assistant_level: None,
     };
-    let json = serde_json::to_string_pretty(&report)?;
-    std::fs::write(&args.out, json + "\n")
-        .map_err(|e| Error::Input(format!("cannot write {}: {e}", args.out.display())))?;
+    // Written before the paid part starts, and again after every query, so a failure midway
+    // leaves the partial results on disk.
+    report.write(&args.out)?;
+    if let Some(api) = &api {
+        let out = args.out.clone();
+        let assistant_level = assistant::run(api, &mut mcp, &queries, args.max_turns, |partial| {
+            report.assistant_level = Some(partial.clone());
+            report.write(&out)
+        })
+        .await?;
+        println!(
+            "Assistant-level\n\n{}",
+            assistant_markdown(&assistant_level)
+        );
+        report.assistant_level = Some(assistant_level);
+    }
+    report.complete = true;
+    report.write(&args.out)?;
     println!("\nJSON written to {}", args.out.display());
+    Ok(exit_status_of(&report, &args))
+}
+
+/// Prints every failed gate and error count, and returns the exit status for them.
+fn exit_status_of(report: &EvalReport, args: &Args) -> u8 {
+    let gates = Gates {
+        min_hit5: args.min_hit5,
+        min_mrr: args.min_mrr,
+    };
+    let failures = gates.failures(&report.tool_level.overall);
+    for failure in &failures {
+        eprintln!("mcp-commerce-evals: {failure}");
+    }
+    let query_errors = report.tool_level.overall.errors;
+    if query_errors > 0 {
+        eprintln!("mcp-commerce-evals: {query_errors} queries errored");
+    }
+    gate::exit_status(query_errors, &failures)
+}
+
+/// Fails before any traffic when the report file exists and `--force` was not given.
+fn refuse_to_overwrite(out: &Path, force: bool) -> Result<()> {
+    if out.exists() && !force {
+        return Err(Error::Input(format!(
+            "{} exists; pass --force to replace it",
+            out.display()
+        )));
+    }
     Ok(())
 }

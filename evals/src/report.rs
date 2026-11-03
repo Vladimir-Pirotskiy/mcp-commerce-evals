@@ -1,45 +1,85 @@
 //! Markdown tables for the terminal and the JSON document written to disk.
 
 use std::fmt::Write;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
 use crate::assistant::{AssistantReport, AssistantSummary};
-use crate::metrics::Summary;
+use crate::error::{Error, Result};
+use crate::meta::Meta;
+use crate::metrics::{Interval, Summary};
 use crate::tool_level::ToolLevelReport;
 
 /// Everything one run produced; this is what `--out` writes.
 #[derive(Debug, Serialize)]
 pub struct EvalReport {
+    /// What produced the numbers: versions, inputs, server and model settings.
+    pub meta: Meta,
     /// MCP endpoint that was evaluated.
     pub store_url: String,
     /// Queries file that was used.
     pub queries_file: String,
-    /// Seconds since the Unix epoch when the run finished.
+    /// Seconds since the Unix epoch when the report was last written.
     pub unix_time: u64,
+    /// False while the run is still going, so a report found on disk after a crash says so.
+    pub complete: bool,
     /// Retrieval scores of the search tool.
     pub tool_level: ToolLevelReport,
     /// Scores of a model shopping through the tools; absent unless requested.
     pub assistant_level: Option<AssistantReport>,
 }
 
+impl EvalReport {
+    /// Writes the report as pretty JSON, stamping the time of the write.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be written.
+    pub fn write(&mut self, path: &Path) -> Result<()> {
+        self.unix_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let json = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, json + "\n")
+            .map_err(|e| Error::Input(format!("cannot write {}: {e}", path.display())))
+    }
+}
+
+fn interval(value: f64, ci: Interval) -> String {
+    format!("{value:.2} ({:.2}-{:.2})", ci.low, ci.high)
+}
+
 fn tool_row(label: &str, s: &Summary) -> String {
     format!(
-        "| {label} | {} | {:.2} | {:.2} | {:.2} | {:.1} | {:.1} |\n",
-        s.n, s.hit_at_1, s.hit_at_5, s.mrr, s.latency_p50_ms, s.latency_p95_ms
+        "| {label} | {} | {} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} |\n",
+        s.n,
+        interval(s.hit_at_1, s.hit_at_1_ci),
+        interval(s.hit_at_5, s.hit_at_5_ci),
+        s.recall_at_10,
+        s.ndcg_at_10,
+        s.mrr,
+        s.latency_p50_ms,
+        s.latency_p95_ms
     )
 }
 
-/// The tool-level result as Markdown: a table per kind and a list of the queries that missed
-/// at rank 1.
+/// The tool-level result as Markdown: a table per kind, the headline rows with and without the
+/// filter queries, and a list of the queries that missed at rank 1. Intervals are 95% Wilson.
+#[must_use]
 pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
     let mut out = String::from(
-        "| kind | queries | hit@1 | hit@5 | MRR | p50 ms | p95 ms |\n|---|---:|---:|---:|---:|---:|---:|\n",
+        "| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 | nDCG@10 | MRR | p50 ms | p95 ms |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n",
     );
     for (kind, summary) in &report.by_kind {
         out.push_str(&tool_row(kind, summary));
     }
     out.push_str(&tool_row("**all**", &report.overall));
+    out.push_str(&tool_row(
+        "**all except filter**",
+        &report.overall_without_filter,
+    ));
     let misses: Vec<_> = report
         .queries
         .iter()
@@ -62,7 +102,7 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
                     .returned
                     .iter()
                     .take(3)
-                    .cloned()
+                    .map(|id| id.as_deref().unwrap_or("(no id)"))
                     .collect::<Vec<_>>()
                     .join(", "),
             };
@@ -78,16 +118,25 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
 
 fn assistant_row(label: &str, s: &AssistantSummary) -> String {
     format!(
-        "| {label} | {} | {:.2} | {:.1} | {} | {} | {} |\n",
-        s.n, s.answer_accuracy, s.mean_tool_calls, s.input_tokens, s.output_tokens, s.errors
+        "| {label} | {} | {:.2} | {:.2} | {:.2} | {} | {} | {:.1} | {} | {} |\n",
+        s.n,
+        s.answer_accuracy,
+        s.answer_accuracy_without_errors,
+        s.mentions_expected,
+        s.unanswered,
+        s.errors,
+        s.mean_tool_calls,
+        s.input_tokens,
+        s.output_tokens
     )
 }
 
 /// The assistant-level result as a Markdown table.
+#[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {}\n\n| kind | queries | answer names expected part | tool calls per query | input tokens | output tokens | errors |\n|---|---:|---:|---:|---:|---:|---:|\n",
-        report.model
+        "Model: {} (temperature {})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        report.model, report.temperature
     );
     for (kind, summary) in &report.by_kind {
         out.push_str(&assistant_row(kind, summary));
