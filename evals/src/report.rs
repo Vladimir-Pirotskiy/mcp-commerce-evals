@@ -154,12 +154,14 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
 
 fn assistant_row(label: &str, s: &AssistantSummary) -> String {
     format!(
-        "| {label} | {} | {} | {:.2} | {} | {} | {} | {:.1} | {} | {} |\n",
+        "| {label} | {} | {} | {:.2} | {} | {} | {} | {} | {} | {:.1} | {} | {} |\n",
         s.n,
         interval(s.answer_accuracy, s.answer_accuracy_ci),
         s.answer_accuracy_without_errors,
         s.mentions_expected
             .map_or_else(|| "n/a".to_owned(), |m| format!("{m:.2}")),
+        s.wrong_id,
+        s.no_answer_line,
         s.unanswered,
         s.errors,
         s.mean_tool_calls,
@@ -172,7 +174,7 @@ fn assistant_row(label: &str, s: &AssistantSummary) -> String {
 #[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {}{} ({})\n\n| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        "Model: {}{} ({})\n\n| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
         report.model,
         if report.response_models.is_empty() {
             String::new()
@@ -285,6 +287,23 @@ mod tests {
         let few = AssistantReport::from_results("m", None, 3, trial_runs(4, 3, |q| q < 2));
         assert_eq!(few.overall.answer_accuracy_ci, None);
         assert!(assistant_markdown(&few).contains("(n/a)"));
+    }
+
+    #[test]
+    fn the_table_shows_a_wrong_id_and_a_missing_answer_line_in_separate_columns() {
+        let mut no_line = run("a", "typo", &["X"], true);
+        no_line.correct = false;
+        let mut wrong = run("b", "typo", &["X"], true);
+        wrong.correct = false;
+        wrong.committed = Some("Y".to_owned());
+        let report = AssistantReport::from_results("m", None, 1, vec![no_line, wrong]);
+        let table = assistant_markdown(&report);
+        assert!(
+            table.contains("| wrong id | no ANSWER line | unfinished |"),
+            "{table}"
+        );
+        let all = table.lines().find(|l| l.starts_with("| **all**")).unwrap();
+        assert!(all.contains("| 1 | 1 | 0 | 0 |"), "{all}");
     }
 
     #[test]

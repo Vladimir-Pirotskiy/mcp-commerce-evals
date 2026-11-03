@@ -4,7 +4,7 @@
 use std::borrow::Borrow;
 use std::collections::HashSet;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::tool_level::QueryResult;
 
@@ -150,7 +150,7 @@ pub fn pass_at_k(n: usize, correct: usize, k: usize) -> f64 {
 }
 
 /// A confidence interval for a share.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Interval {
     /// Lower bound.
     pub low: f64,

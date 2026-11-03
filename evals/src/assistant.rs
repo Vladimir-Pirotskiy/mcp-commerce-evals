@@ -485,7 +485,7 @@ pub async fn answer(
 }
 
 /// Scores over a set of assistant runs.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssistantSummary {
     /// Number of queries.
     pub n: usize,
@@ -506,6 +506,15 @@ pub struct AssistantSummary {
     /// Queries that ended without a final answer (a stop reason other than `end_turn`, or the
     /// turn limit) and had no API error.
     pub unanswered: usize,
+    /// Queries whose model finished its turn and had no API error, but whose reply did not end
+    /// in an `ANSWER:` line. Not counted in `wrong_id`: nothing was committed. Zero in a file
+    /// written before the count existed.
+    #[serde(default)]
+    pub no_answer_line: usize,
+    /// Queries that committed to an id (or `none`) that is wrong.  Zero in a file written before
+    /// the count existed.
+    #[serde(default)]
+    pub wrong_id: usize,
     /// Queries that ended in an API or transport error.
     pub errors: usize,
     /// Mean tool calls per query.
@@ -628,6 +637,8 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
             )
         }),
         unanswered: count(|r| r.error.is_none() && !r.answered),
+        no_answer_line: count(|r| r.error.is_none() && r.answered && r.committed.is_none()),
+        wrong_id: count(|r| r.error.is_none() && r.committed.is_some() && !r.correct),
         errors,
         mean_tool_calls: share(results.iter().map(|r| r.tool_calls as usize).sum(), n),
         input_tokens: results.iter().map(|r| r.input_tokens).sum(),
@@ -780,6 +791,53 @@ mod tests {
         let parsed: AssistantResult = serde_json::from_value(old).unwrap();
         assert_eq!(parsed.tools_used[0].name, "get_product");
         assert!(parsed.tools_used[0].arguments.is_null());
+    }
+
+    fn result(committed: Option<&str>, correct: bool) -> AssistantResult {
+        let mut result: AssistantResult = serde_json::from_value(json!({
+            "id": "q", "kind": "k", "text": "t", "expected": ["X"], "final_answer": "",
+            "committed": committed, "correct": correct, "mentions_expected": false,
+            "answered": true, "stop_reason": "end_turn", "tool_calls": 0, "tools_used": [],
+            "turns": 1, "input_tokens": 1, "output_tokens": 1, "error": null,
+            "trial": 1, "models": []
+        }))
+        .unwrap();
+        result.id = format!("q{committed:?}{correct}");
+        result
+    }
+
+    #[test]
+    fn a_reply_without_an_answer_line_is_counted_apart_from_a_wrong_id() {
+        let mut unfinished = result(None, false);
+        unfinished.answered = false;
+        let mut failed = result(None, false);
+        failed.error = Some("boom".to_owned());
+        let report = AssistantReport::from_results(
+            "m",
+            None,
+            1,
+            vec![
+                result(Some("X"), true),
+                result(Some("Y"), false),
+                result(Some("none"), false),
+                result(None, false),
+                unfinished,
+                failed,
+            ],
+        );
+        let overall = &report.overall;
+        assert_eq!(overall.wrong_id, 2, "committed, and wrong");
+        assert_eq!(overall.no_answer_line, 1, "finished with no ANSWER line");
+        assert_eq!(overall.unanswered, 1, "did not finish");
+        assert_eq!(overall.errors, 1);
+        let json = serde_json::to_value(overall).unwrap();
+        assert_eq!(json["no_answer_line"], 1);
+        // A summary saved before these counts existed still parses, with zeros.
+        let mut old = json;
+        old.as_object_mut().unwrap().remove("no_answer_line");
+        old.as_object_mut().unwrap().remove("wrong_id");
+        let parsed: AssistantSummary = serde_json::from_value(old).unwrap();
+        assert_eq!((parsed.no_answer_line, parsed.wrong_id), (0, 0));
     }
 
     #[test]
