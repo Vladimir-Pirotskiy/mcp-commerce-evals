@@ -1,7 +1,7 @@
 {
   "meta": {
     "crate_version": "0.1.0",
-    "git_commit": "1d1682db2c1082c7e3ae1a998f692fdeaca390f9",
+    "git_commit": "caa2e723d64774e58c72e8b936267f4742875d45",
     "queries_sha256": "4eea41e518223076a1695b9d5e1a060785d2277359643c0b4e941f5d5203a517",
     "top_k": 10,
     "repeat": 1,
@@ -19,7 +19,7 @@
   },
   "store_url": "http://127.0.0.1:8787/mcp",
   "queries_file": "evals/queries.json",
-  "unix_time": 1793696056,
+  "unix_time": 1793697375,
   "complete": true,
   "tool_level": {
     "overall": {
@@ -51,9 +51,9 @@
       },
       "errors": 0,
       "latency_samples": 40,
-      "latency_p50_ms": 0.408792,
-      "latency_p95_ms": 0.837167,
-      "latency_mean_ms": 0.481148025
+      "latency_p50_ms": 0.262375,
+      "latency_p95_ms": 0.42216699999999996,
+      "latency_mean_ms": 0.27271047500000006
     },
     "overall_without_filter": {
       "n": 34,
@@ -84,9 +84,9 @@
       },
       "errors": 0,
       "latency_samples": 34,
-      "latency_p50_ms": 0.422125,
-      "latency_p95_ms": 0.905875,
-      "latency_mean_ms": 0.49968761764705893
+      "latency_p50_ms": 0.265958,
+      "latency_p95_ms": 0.46575,
+      "latency_mean_ms": 0.28120597058823527
     },
     "by_kind": {
       "adversarial": {
@@ -109,9 +109,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 1,
-        "latency_p50_ms": 0.7062080000000001,
-        "latency_p95_ms": 0.7062080000000001,
-        "latency_mean_ms": 0.7062080000000001
+        "latency_p50_ms": 0.238417,
+        "latency_p95_ms": 0.238417,
+        "latency_mean_ms": 0.238417
       },
       "compatibility": {
         "n": 8,
@@ -133,9 +133,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.504208,
-        "latency_p95_ms": 0.6922919999999999,
-        "latency_mean_ms": 0.5261405
+        "latency_p50_ms": 0.219291,
+        "latency_p95_ms": 0.33370900000000003,
+        "latency_mean_ms": 0.25760425
       },
       "exact_part_number": {
         "n": 5,
@@ -157,9 +157,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 5,
-        "latency_p50_ms": 0.644208,
-        "latency_p95_ms": 0.979375,
-        "latency_mean_ms": 0.6503082
+        "latency_p50_ms": 0.270542,
+        "latency_p95_ms": 0.46575,
+        "latency_mean_ms": 0.31835019999999997
       },
       "filter": {
         "n": 6,
@@ -181,9 +181,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.39883300000000005,
-        "latency_p95_ms": 0.5009170000000001,
-        "latency_mean_ms": 0.3760903333333334
+        "latency_p50_ms": 0.180083,
+        "latency_p95_ms": 0.358292,
+        "latency_mean_ms": 0.22456933333333332
       },
       "plain_description": {
         "n": 8,
@@ -205,9 +205,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.49324999999999997,
-        "latency_p95_ms": 0.837167,
-        "latency_mean_ms": 0.534729375
+        "latency_p50_ms": 0.235625,
+        "latency_p95_ms": 0.30650000000000005,
+        "latency_mean_ms": 0.248244875
       },
       "synonym": {
         "n": 6,
@@ -229,9 +229,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.346667,
-        "latency_p95_ms": 0.422125,
-        "latency_mean_ms": 0.3528753333333334
+        "latency_p50_ms": 0.272542,
+        "latency_p95_ms": 0.38041699999999995,
+        "latency_mean_ms": 0.292271
       },
       "typo": {
         "n": 6,
@@ -253,9 +253,9 @@
         "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.330417,
-        "latency_p95_ms": 0.615459,
-        "latency_mean_ms": 0.40456983333333335
+        "latency_p50_ms": 0.299833,
+        "latency_p95_ms": 0.496084,
+        "latency_mean_ms": 0.32173599999999997
       }
     },
     "no_match": {
@@ -287,7 +287,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.39554100000000003
+          0.245917
         ],
         "error": null,
         "nondeterministic": false
@@ -313,7 +313,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.905875
+          0.42216699999999996
         ],
         "error": null,
         "nondeterministic": false
@@ -330,7 +330,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.326542
+          0.18737499999999999
         ],
         "error": null,
         "nondeterministic": false
@@ -356,7 +356,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.644208
+          0.270542
         ],
         "error": null,
         "nondeterministic": false
@@ -382,7 +382,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.979375
+          0.46575
         ],
         "error": null,
         "nondeterministic": false
@@ -408,7 +408,7 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.7062080000000001
+          0.238417
         ],
         "error": null,
         "nondeterministic": false
@@ -434,7 +434,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.837167
+          0.30650000000000005
         ],
         "error": null,
         "nondeterministic": false
@@ -461,7 +461,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.632
+          0.235959
         ],
         "error": null,
         "nondeterministic": false
@@ -487,7 +487,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.296417
+          0.207167
         ],
         "error": null,
         "nondeterministic": false
@@ -514,7 +514,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.608125
+          0.20633300000000002
         ],
         "error": null,
         "nondeterministic": false
@@ -542,7 +542,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.3775
+          0.23083399999999998
         ],
         "error": null,
         "nondeterministic": false
@@ -571,7 +571,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.49324999999999997
+          0.235625
         ],
         "error": null,
         "nondeterministic": false
@@ -599,7 +599,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.394542
+          0.262375
         ],
         "error": null,
         "nondeterministic": false
@@ -625,7 +625,7 @@
         ],
         "rank": 3,
         "latencies_ms": [
-          0.638834
+          0.301166
         ],
         "error": null,
         "nondeterministic": false
@@ -657,7 +657,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.425375
+          0.33370900000000003
         ],
         "error": null,
         "nondeterministic": false
@@ -685,7 +685,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.6922919999999999
+          0.279042
         ],
         "error": null,
         "nondeterministic": false
@@ -712,7 +712,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.568375
+          0.219291
         ],
         "error": null,
         "nondeterministic": false
@@ -743,7 +743,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.504208
+          0.202458
         ],
         "error": null,
         "nondeterministic": false
@@ -774,7 +774,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.686458
+          0.289917
         ],
         "error": null,
         "nondeterministic": false
@@ -811,7 +811,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5615410000000001
+          0.20341700000000001
         ],
         "error": null,
         "nondeterministic": false
@@ -838,7 +838,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.375625
+          0.216875
         ],
         "error": null,
         "nondeterministic": false
@@ -880,7 +880,7 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.39525
+          0.316125
         ],
         "error": null,
         "nondeterministic": false
@@ -908,7 +908,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.615459
+          0.31341600000000003
         ],
         "error": null,
         "nondeterministic": false
@@ -938,7 +938,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.49941700000000006
+          0.260208
         ],
         "error": null,
         "nondeterministic": false
@@ -969,7 +969,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.379334
+          0.299833
         ],
         "error": null,
         "nondeterministic": false
@@ -1000,7 +1000,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.287
+          0.240458
         ],
         "error": null,
         "nondeterministic": false
@@ -1028,7 +1028,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.315792
+          0.496084
         ],
         "error": null,
         "nondeterministic": false
@@ -1060,7 +1060,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.330417
+          0.32041699999999995
         ],
         "error": null,
         "nondeterministic": false
@@ -1089,7 +1089,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.322209
+          0.272542
         ],
         "error": null,
         "nondeterministic": false
@@ -1115,7 +1115,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.27591699999999997
+          0.290875
         ],
         "error": null,
         "nondeterministic": false
@@ -1143,7 +1143,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.346667
+          0.240084
         ],
         "error": null,
         "nondeterministic": false
@@ -1175,7 +1175,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.376209
+          0.265958
         ],
         "error": null,
         "nondeterministic": false
@@ -1207,7 +1207,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.422125
+          0.30374999999999996
         ],
         "error": null,
         "nondeterministic": false
@@ -1238,7 +1238,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.374125
+          0.38041699999999995
         ],
         "error": null,
         "nondeterministic": false
@@ -1266,7 +1266,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.39883300000000005
+          0.358292
         ],
         "error": null,
         "nondeterministic": false
@@ -1294,7 +1294,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5009170000000001
+          0.314083
         ],
         "error": null,
         "nondeterministic": false
@@ -1321,7 +1321,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.34212499999999996
+          0.19816699999999998
         ],
         "error": null,
         "nondeterministic": false
@@ -1346,7 +1346,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.408792
+          0.16333299999999998
         ],
         "error": null,
         "nondeterministic": false
@@ -1374,7 +1374,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.43391700000000005
+          0.180083
         ],
         "error": null,
         "nondeterministic": false
@@ -1394,7 +1394,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.171958
+          0.13345800000000002
         ],
         "error": null,
         "nondeterministic": false
@@ -1418,7 +1418,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.28408300000000003
+          0.24487499999999998
         ],
         "error": null,
         "nondeterministic": false
@@ -1442,7 +1442,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.3015
+          0.261667
         ],
         "error": null,
         "nondeterministic": false
@@ -1466,7 +1466,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.258834
+          0.27391600000000005
         ],
         "error": null,
         "nondeterministic": false
@@ -1490,7 +1490,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.329583
+          0.182667
         ],
         "error": null,
         "nondeterministic": false

@@ -208,7 +208,11 @@ the tool-level or the assistant-level run) and 3 when a gate was not met: `--min
 `--min-mrr <f64>` compare against the "all" row, `--min-accuracy <f64>` against the
 assistant-level share of correct committed answers (it needs `--assistant`), the failed gate
 is printed, and a run that meets its gates prints each threshold with the measured score. Query errors of the `no_match` kind count toward exit 2. A run whose report is incomplete exits 1. `--top-k` takes 1 to 100, `--max-turns` 1 to
-50 and `--repeat` at least 1; other values are refused before any request. The JSON report is written first, and `--out` refuses to replace an
+50 and `--repeat` at least 1; other values are refused before any request. After connecting, the
+CLI reads the search tool's `inputSchema.properties.limit.maximum` from `tools/list`; a `--top-k`
+above it (the reference store accepts 25) stops the run with exit status 1 and an error naming both
+numbers, before any query, rather than clamping silently into a score that is not the one asked for.
+A store that lists no such maximum is not checked. The JSON report is written first, and `--out` refuses to replace an
 existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
 the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
 the server's `serverInfo` and negotiated protocol version, and for assistant runs the model,
@@ -235,7 +239,10 @@ the model to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: no
 only when that committed id equals an expected id after normalising case and punctuation; whether
 the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`; not applicable, `n/a` in the table and `null` in the JSON, for a `no_match` query, and left out of the overall figure).
 Only a `stop_reason` of `end_turn` is a final answer: `max_tokens`, `refusal`, `pause_turn` or
-anything else is recorded per query and counted as unanswered. The client retries HTTP 429, 529
+anything else is recorded per query and counted as unanswered (`unfinished` in the table). Of the
+runs that did finish, the table counts a committed but wrong id (`wrong id`) apart from a reply
+with no `ANSWER:` line at all (`no ANSWER line`), because the first is a mistake and the second is
+a refusal to commit, often a question put back to the buyer. The client retries HTTP 429, 529
 and 5xx up to three times with exponential backoff and jitter, honouring `retry-after`, and
 refuses an empty `ANTHROPIC_API_KEY` before any request. Accuracy is reported over all queries
 and over the queries without API errors, next to the error count. The report adds tool calls per
@@ -269,7 +276,7 @@ counts and trials.
 
 Tool-level run on 2026-11-03, release build, store and CLI on the same machine (Apple M4 Max,
 64 GiB, macOS 27.2), loopback, one run of 44 queries (40 ranked, 4 `no_match`), `--top-k 10`, `--repeat 1`, built from commit
-`1d1682d` (the `git_commit` in the file's `meta` block), with the gates CI uses:
+`caa2e72` (the `git_commit` in the file's `meta` block), with the gates CI uses:
 
 ```sh
 cargo build --release --workspace
@@ -284,15 +291,15 @@ work"); p50 and p95 are milliseconds. The file is `results/tool-level-2026-11-03
 
 | kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 (95% CI) | nDCG@10 (95% CI) | MRR (95% CI) | p50 ms | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (n/a) | 0.30 (n/a) | 0.11 (n/a) | 0.71 | 0.71 |
-| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (n/a) | 0.89 (n/a) | 0.89 (n/a) | 0.50 | 0.69 |
-| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.64 | 0.98 |
-| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (n/a) | 0.83 (n/a) | 0.83 (n/a) | 0.40 | 0.50 |
-| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (n/a) | 0.94 (n/a) | 0.92 (n/a) | 0.49 | 0.84 |
-| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.35 | 0.42 |
-| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.33 | 0.62 |
-| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.41 | 0.84 |
-| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.42 | 0.91 |
+| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (n/a) | 0.30 (n/a) | 0.11 (n/a) | 0.24 | 0.24 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (n/a) | 0.89 (n/a) | 0.89 (n/a) | 0.22 | 0.33 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.27 | 0.47 |
+| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (n/a) | 0.83 (n/a) | 0.83 (n/a) | 0.18 | 0.36 |
+| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (n/a) | 0.94 (n/a) | 0.92 (n/a) | 0.24 | 0.31 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.27 | 0.38 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.30 | 0.50 |
+| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.26 | 0.42 |
+| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.27 | 0.47 |
 
 The four `no_match` queries returned 10 results each (the store always returns its best guesses)
 and are not in any row above.

@@ -6,6 +6,34 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `mcp-commerce-evals render <results.json>` prints the Markdown report for a saved results file,
+  scored again by the current report code, with no network call. Older files still parse.
+- The assistant report counts runs that finished without an `ANSWER:` line (`no_answer_line`)
+  apart from runs that committed a wrong id (`wrong_id`), in the JSON (both default to 0 in older
+  files) and as table columns. The `unanswered` column is now headed `unfinished`.
+- A test checks that every committed `results/*.json` renders and that the README tables are the
+  rows the current code renders from them.
+- A weekly scheduled CI run, and a `release` workflow: pushing a `v*` tag that matches the
+  workspace version builds Linux x86_64 binaries and creates the GitHub release with generated
+  notes and a checksum.
+
+### Changed
+
+- The advisory scan is a job of its own that does not fail a push or pull request run, only the
+  weekly scheduled one, so an upstream advisory cannot block an unrelated change.
+- The README assistant tables were re-rendered from the saved files with `render`: Haiku's
+  intervals now resample whole queries (three trials each); Sonnet's stay Wilson. The tool-level
+  results were rerun on the new build.
+
+### Fixed
+
+- A `--top-k` above the search tool's advertised `limit` maximum (the reference store's is 25)
+  failed every query; it now stops before any query with an error naming both numbers.
+- A rate-limit table full of live clients was swept on every request from a new address; the
+  sweep forced by a full table now runs at most once a second.
+
 ## [0.1.0] - 2026-11-03
 
 First release.
