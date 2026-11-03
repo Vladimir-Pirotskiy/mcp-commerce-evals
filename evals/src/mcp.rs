@@ -63,21 +63,43 @@ impl McpClient {
                 protocol_version: String::new(),
             },
         };
+        client.initialize().await?;
+        Ok(client)
+    }
+
+    /// `initialize` followed by `notifications/initialized`, on a client without a session.
+    async fn initialize(&mut self) -> Result<()> {
         let params = json!({
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
             "clientInfo": { "name": "mcp-commerce-evals", "version": env!("CARGO_PKG_VERSION") },
         });
-        let reply = client.request("initialize", params).await?;
-        client.handshake = ServerHandshake {
+        let Exchange::Done(reply) = self.exchange("initialize", &params).await? else {
+            return Err(Error::Protocol("initialize: HTTP 404".to_owned()));
+        };
+        self.handshake = ServerHandshake {
             server_info: reply["serverInfo"].clone(),
             protocol_version: reply["protocolVersion"]
                 .as_str()
                 .unwrap_or_default()
                 .to_owned(),
         };
-        client.notify("notifications/initialized").await?;
-        Ok(client)
+        self.notify("notifications/initialized").await
+    }
+
+    /// Ends the session politely: a DELETE with the session id, which a stateless server may
+    /// refuse with 405. Best effort, since the results are already in hand.
+    pub async fn close(self) {
+        let Some(session) = &self.session else {
+            return;
+        };
+        let _ = self
+            .http
+            .delete(&self.url)
+            .header("mcp-protocol-version", PROTOCOL_VERSION)
+            .header("mcp-session-id", session)
+            .send()
+            .await;
     }
 
     /// What the server reported when the session was opened.
@@ -156,14 +178,43 @@ impl McpClient {
         }
     }
 
+    /// One request. When the server forgets the session (HTTP 404 on a request that carried
+    /// one), the session is opened again once and the request retried.
     async fn request(&mut self, method: &str, params: Value) -> Result<Value> {
+        let had_session = self.session.is_some();
+        match self.exchange(method, &params).await? {
+            Exchange::Done(result) => Ok(result),
+            Exchange::SessionGone if had_session => {
+                self.session = None;
+                self.initialize().await?;
+                match self.exchange(method, &params).await? {
+                    Exchange::Done(result) => Ok(result),
+                    Exchange::SessionGone => Err(Error::Protocol(format!(
+                        "{method}: HTTP 404 after a new session"
+                    ))),
+                }
+            }
+            Exchange::SessionGone => Err(Error::Protocol(format!("{method}: HTTP 404"))),
+        }
+    }
+
+    async fn exchange(&mut self, method: &str, params: &Value) -> Result<Exchange> {
         self.next_id += 1;
         let id = self.next_id;
         let body = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        let sent_session = self.session.is_some();
         let response = self.post(&body).send().await?;
         let status = response.status();
-        if let Some(session) = response.headers().get("mcp-session-id") {
-            self.session = session.to_str().ok().map(str::to_owned);
+        // A header that is not text keeps the id we have rather than clearing the session.
+        if let Some(session) = response
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|v| v.to_str().ok())
+        {
+            self.session = Some(session.to_owned());
+        }
+        if status == reqwest::StatusCode::NOT_FOUND && sent_session {
+            return Ok(Exchange::SessionGone);
         }
         if !status.is_success() {
             return Err(Error::Protocol(format!("{method}: HTTP {status}")));
@@ -174,13 +225,34 @@ impl McpClient {
             .and_then(|v| v.to_str().ok())
             .is_some_and(|v| v.starts_with("text/event-stream"));
         let text = response.text().await?;
-        let message = if is_stream {
-            find_in_stream(&text, id)?
-        } else {
-            serde_json::from_str(&text)?
-        };
-        reply_result(method, id, &message)
+        let message = parse_reply(&text, is_stream, id)?;
+        reply_result(method, id, &message).map(Exchange::Done)
     }
+}
+
+/// What one request came to.
+enum Exchange {
+    /// The `result` of the reply.
+    Done(Value),
+    /// The server answered 404 to a request that carried a session id.
+    SessionGone,
+}
+
+/// The JSON-RPC message answering `id` in a reply body (plain JSON or an event stream).
+///
+/// A JSON array is a batch, which this client never asks for, so it is an error.
+fn parse_reply(body: &str, is_stream: bool, id: u64) -> Result<Value> {
+    if is_stream {
+        return find_in_stream(body, id);
+    }
+    let message: Value = serde_json::from_str(body)?;
+    if message.is_array() {
+        return Err(Error::Protocol(
+            "the server replied with a JSON-RPC batch, which this client does not support"
+                .to_owned(),
+        ));
+    }
+    Ok(message)
 }
 
 /// The `result` of a JSON-RPC reply to request `id`, or the reason it is not usable.
@@ -207,11 +279,32 @@ fn reply_result(method: &str, id: u64, message: &Value) -> Result<Value> {
         .ok_or_else(|| Error::Protocol(format!("{method}: the reply has neither result nor error")))
 }
 
+/// The data of each server-sent event: its `data:` lines joined with newlines, as the SSE
+/// format defines, so a JSON message split over several lines parses.
+fn event_data(body: &str) -> Vec<String> {
+    let mut events = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for line in body.lines() {
+        if line.is_empty() {
+            if !current.is_empty() {
+                events.push(current.join("\n"));
+                current.clear();
+            }
+        } else if let Some(data) = line.strip_prefix("data:") {
+            current.push(data.strip_prefix(' ').unwrap_or(data));
+        }
+    }
+    if !current.is_empty() {
+        events.push(current.join("\n"));
+    }
+    events
+}
+
 /// The JSON-RPC reply with `id` inside a server-sent-event body.
 fn find_in_stream(body: &str, id: u64) -> Result<Value> {
-    body.lines()
-        .filter_map(|line| line.strip_prefix("data:"))
-        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
+    event_data(body)
+        .iter()
+        .filter_map(|data| serde_json::from_str::<Value>(data).ok())
         .find(|message| message["id"] == id)
         .ok_or_else(|| Error::Protocol(format!("no reply with id {id} in the event stream")))
 }
@@ -227,6 +320,20 @@ mod tests {
         let message = find_in_stream(body, 7).unwrap();
         assert_eq!(message["result"]["ok"], true);
         assert!(find_in_stream(body, 8).is_err());
+    }
+
+    #[test]
+    fn a_message_split_over_several_data_lines_is_joined_per_event() {
+        let body = "event: message\ndata: {\"jsonrpc\":\"2.0\",\ndata: \"id\":4,\ndata: \"result\":{\"ok\":true}}\n\n";
+        let message = find_in_stream(body, 4).unwrap();
+        assert_eq!(message["result"]["ok"], true);
+    }
+
+    #[test]
+    fn a_batch_reply_is_an_error() {
+        let error = parse_reply("[{\"id\":1,\"result\":{}}]", false, 1).unwrap_err();
+        assert!(error.to_string().contains("batch"), "{error}");
+        assert!(parse_reply("{\"id\":1,\"result\":{}}", false, 1).is_ok());
     }
 
     #[test]

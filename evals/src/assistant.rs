@@ -294,6 +294,15 @@ fn next_step(stop_reason: Option<&str>) -> Next {
     }
 }
 
+/// The text handed to the model for a tool result. A tool that answers only with
+/// `structuredContent` and no text would otherwise give the model an empty result.
+fn tool_result_text(output: &crate::mcp::ToolOutput) -> String {
+    match &output.structured {
+        Some(structured) if output.text.trim().is_empty() => structured.to_string(),
+        _ => output.text.clone(),
+    }
+}
+
 async fn run_tools(mcp: &mut McpClient, calls: &[&Value], result: &mut AssistantResult) -> Value {
     let mut answers = Vec::with_capacity(calls.len());
     for call in calls {
@@ -301,7 +310,7 @@ async fn run_tools(mcp: &mut McpClient, calls: &[&Value], result: &mut Assistant
         result.tool_calls += 1;
         result.tools_used.push(name.to_owned());
         let (text, is_error) = match mcp.call_tool(name, call["input"].clone()).await {
-            Ok(output) => (output.text, output.is_error),
+            Ok(output) => (tool_result_text(&output), output.is_error),
             Err(e) => (e.to_string(), true),
         };
         answers.push(json!({
@@ -516,6 +525,25 @@ mod tests {
             Duration::from_secs(1),
         )
         .unwrap()
+    }
+
+    #[test]
+    fn a_structured_only_tool_result_is_passed_on_as_json() {
+        let output = |structured, text: &str| crate::mcp::ToolOutput {
+            is_error: false,
+            structured,
+            text: text.to_owned(),
+        };
+        let only_structured = output(Some(json!({ "results": [{ "id": "A-1" }] })), "");
+        assert_eq!(
+            tool_result_text(&only_structured),
+            r#"{"results":[{"id":"A-1"}]}"#
+        );
+        assert_eq!(
+            tool_result_text(&output(Some(json!({ "a": 1 })), "hello")),
+            "hello"
+        );
+        assert_eq!(tool_result_text(&output(None, "")), "");
     }
 
     #[test]
