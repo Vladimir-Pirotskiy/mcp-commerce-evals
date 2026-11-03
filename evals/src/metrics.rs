@@ -503,8 +503,20 @@ mod tests {
         );
         assert!(first.low < 0.75 && 0.75 < first.high, "{first:?}");
         assert!(first.low > 0.55 && first.high < 0.95, "{first:?}");
-        // The result for this data is pinned, so a change of seed or method is noticed.
-        assert!((first.low - 0.6).abs() < 0.051 && (first.high - 0.875).abs() < 0.051);
+        // Pinned to the values this seed gives (resampled means of 0/1 scores are multiples of
+        // 1/40), so a change of seed, resample count or method is noticed.
+        assert!((first.low - 0.6).abs() < 1e-12, "{first:?}");
+        assert!((first.high - 0.875).abs() < 1e-12, "{first:?}");
+    }
+
+    #[test]
+    fn the_bootstrap_interval_of_graded_scores_is_pinned_to_the_seed() {
+        // Graded scores make the percentiles fall between multiples of 1/40, so almost any other
+        // seed moves them.
+        let values: Vec<f64> = (0..40).map(|i| f64::from((i * 7) % 11) / 10.0).collect();
+        let interval = bootstrap_mean_ci(&values).unwrap();
+        assert!((interval.low - 0.405).abs() < 1e-12, "{interval:?}");
+        assert!((interval.high - 0.5975).abs() < 1e-12, "{interval:?}");
     }
 
     #[test]
