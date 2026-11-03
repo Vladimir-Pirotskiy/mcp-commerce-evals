@@ -2,13 +2,18 @@
 //! descriptions that an assistant reads when it decides how to fill in a call.
 //!
 //! Every type drops the formats schemars invents for Rust numbers (`uint32`, `double`): JSON
-//! Schema does not define them and a client that validates the schema warns on each one. Unsigned
-//! fields keep `minimum: 0`.
+//! Schema does not define them and a client that validates the schema warns on each one. Bounded
+//! fields carry the same `minimum` and `maximum` that the code enforces.
 
 use catalog::{Category, Part, StockStatus};
 use schemars::JsonSchema;
 use schemars::transform::RestrictFormats;
 use serde::{Deserialize, Serialize};
+
+/// Smallest `limit` of `search_products`.
+pub const MIN_LIMIT: u32 = 1;
+/// Largest `limit` of `search_products`.
+pub const MAX_LIMIT: u32 = 25;
 
 /// Arguments of `search_products`.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -19,18 +24,20 @@ pub struct SearchArgs {
     /// or a bike ("tire for 29er mountain bike"). Typos and synonyms are tolerated. Leave empty
     /// to list parts by the filters alone.
     pub query: Option<String>,
-    /// Only parts from this brand, for example `Aldermoor`.
+    /// Only parts from this brand, for example `Aldermoor`. At most 100 characters.
     pub brand: Option<String>,
     /// Only parts in this category.
     pub category: Option<Category>,
     /// Requirements the part must fit, such as `11-speed`, `road`, `disc-brake`, `29in`,
     /// `12x142`. A part that says nothing about a requirement is treated as universal for it.
+    /// Up to 10 entries of at most 100 characters; empty entries are refused.
     pub fits: Option<Vec<String>>,
     /// When true, hide parts that cannot ship from the shelf now (backorder and out of stock).
     pub in_stock_only: Option<bool>,
     /// Only parts priced at or below this many US dollars.
     pub max_price_usd: Option<f64>,
-    /// How many results to return, 1 to 25. Defaults to 5.
+    /// How many results to return, 1 to 25; anything else is refused. Defaults to 5.
+    #[schemars(range(min = MIN_LIMIT, max = MAX_LIMIT))]
     pub limit: Option<u32>,
 }
 
@@ -84,7 +91,8 @@ pub struct SearchOutput {
 #[derive(Debug, Deserialize, JsonSchema)]
 #[schemars(transform = RestrictFormats::default())]
 pub struct GetProductArgs {
-    /// Part number as returned by `search_products`. Case and dashes do not matter.
+    /// Part number as returned by `search_products`. Case and dashes do not matter. At most 100
+    /// characters.
     pub id: String,
 }
 
@@ -103,7 +111,8 @@ pub struct ProductDetail {
 pub struct LineRequest {
     /// Part number as returned by `search_products`.
     pub id: String,
-    /// How many units, 1 to 99. Defaults to 1.
+    /// How many units, 1 to 99; anything else is refused. Defaults to 1.
+    #[schemars(range(min = 1, max = 99))]
     pub quantity: Option<u32>,
 }
 

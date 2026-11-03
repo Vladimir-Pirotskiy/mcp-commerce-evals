@@ -7,6 +7,7 @@
 mod api;
 mod cart;
 mod error;
+mod input;
 mod rate_limit;
 mod tools;
 
@@ -24,7 +25,6 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use serde_json::json;
 use tokio::net::TcpListener;
 
-pub use api::*;
 pub use rate_limit::RateLimiter;
 pub use tools::ReferenceStore;
 
@@ -55,6 +55,11 @@ impl Default for StoreConfig {
     }
 }
 
+/// Largest request body on `/mcp`. A full call (twenty lines, a 200-character query) is a few KiB.
+/// rmcp reads the body itself, so this is its own limit: axum's `DefaultBodyLimit` only guards
+/// axum extractors and would not apply to the nested service.
+const MAX_BODY_BYTES: usize = 64 * 1024;
+
 fn mcp_config(config: &StoreConfig) -> StreamableHttpServerConfig {
     let hosts = ["localhost", "127.0.0.1", "::1"]
         .into_iter()
@@ -64,6 +69,7 @@ fn mcp_config(config: &StoreConfig) -> StreamableHttpServerConfig {
         .with_legacy_session_mode(false)
         .with_json_response(true)
         .with_sse_keep_alive(None)
+        .with_max_request_body_bytes(MAX_BODY_BYTES)
         .with_allowed_hosts(hosts)
 }
 

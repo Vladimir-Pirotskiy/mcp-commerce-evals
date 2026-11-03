@@ -6,6 +6,7 @@ use catalog::{Catalog, Part, StockStatus};
 
 use crate::api::{Availability, CartLine, CartOutput, LineAvailability, LineRequest};
 use crate::error::{ToolError, echo};
+use crate::input;
 
 /// Most lines one call may carry.
 pub const MAX_LINES: usize = 20;
@@ -23,6 +24,9 @@ fn quantity_of(line: &LineRequest) -> u32 {
 pub fn validate(lines: &[LineRequest]) -> Result<(), ToolError> {
     if lines.is_empty() || lines.len() > MAX_LINES {
         return Err(ToolError::ItemCount { max: MAX_LINES });
+    }
+    for line in lines {
+        input::bounded("id", &line.id)?;
     }
     match lines
         .iter()

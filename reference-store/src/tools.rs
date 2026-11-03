@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use catalog::{Catalog, SearchQuery};
+use catalog::Catalog;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::{ServerHandler, tool, tool_handler, tool_router};
@@ -13,11 +13,7 @@ use crate::api::{
 };
 use crate::cart;
 use crate::error::ToolError;
-
-const DEFAULT_LIMIT: u32 = 5;
-const MAX_LIMIT: u32 = 25;
-const MAX_QUERY_CHARS: usize = 200;
-const MAX_FITS: usize = 10;
+use crate::input;
 
 /// The store's MCP handler. Cheap to clone: the catalog is shared.
 #[derive(Clone)]
@@ -48,7 +44,8 @@ impl ReferenceStore {
                        Returns up to `limit` ranked results with id, title, brand, price, \
                        stock status and what each part fits. Search results show stock status \
                        but not quantities; call check_availability before promising a \
-                       quantity.",
+                       quantity. Queries \
+                       are limited to 200 characters and 20 words; `limit` is 1 to 25, default 5.",
         annotations(
             title = "Search products",
             read_only_hint = true,
@@ -59,26 +56,7 @@ impl ReferenceStore {
         &self,
         Parameters(args): Parameters<SearchArgs>,
     ) -> Result<Json<SearchOutput>, ToolError> {
-        let text = args.query.unwrap_or_default();
-        if text.chars().count() > MAX_QUERY_CHARS {
-            return Err(ToolError::TooLong {
-                field: "query",
-                max: MAX_QUERY_CHARS,
-            });
-        }
-        let fits = args.fits.unwrap_or_default();
-        if fits.len() > MAX_FITS {
-            return Err(ToolError::TooManyFits { max: MAX_FITS });
-        }
-        let query = SearchQuery {
-            text,
-            brand: args.brand,
-            category: args.category,
-            fits,
-            in_stock_only: args.in_stock_only.unwrap_or(false),
-            max_price_usd: args.max_price_usd,
-            limit: args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as usize,
-        };
+        let query = input::search_query(args)?;
         let found = self.catalog.search(&query);
         let suggestion = found.hits.is_empty().then(|| {
             "No part matched. Try fewer or simpler words, remove a filter, or search by category \
@@ -112,6 +90,7 @@ impl ReferenceStore {
         &self,
         Parameters(args): Parameters<GetProductArgs>,
     ) -> Result<Json<ProductDetail>, ToolError> {
+        input::bounded("id", &args.id)?;
         match self.catalog.get(&args.id) {
             Some(part) => Ok(Json(ProductDetail { part: part.clone() })),
             None => Err(ToolError::UnknownPart { id: args.id }),
@@ -147,7 +126,8 @@ impl ReferenceStore {
                        {id, quantity} items and returns checkout_url, lines and the subtotal. \
                        The buyer opens checkout_url, reviews the cart and pays there: you never \
                        pay and cannot. Refuses unknown parts, out-of-stock parts and quantities \
-                       above the shelf; backordered parts are accepted and flagged.",
+                       above the shelf (a part sent on several lines counts once, with the \
+                       lines added up); backordered parts are accepted and flagged.",
         annotations(
             title = "Create cart",
             read_only_hint = false,

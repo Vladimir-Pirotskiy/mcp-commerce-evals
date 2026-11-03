@@ -15,7 +15,7 @@ pub use compat::{AXLES, BIKES, BRAKES, SPEEDS, WHEELS, all_tags};
 pub use generate::{BRANDS, generate};
 pub use model::{Category, Part, StockStatus};
 pub use search::{Catalog, Hit, SearchQuery, SearchResults};
-pub use text::canonical_tag;
+pub use text::{canonical_tag, query_tokens};
 
 /// Seed of the catalog that ships with the repository and that `evals/queries.json` refers to.
 pub const DEMO_SEED: u64 = 2026;

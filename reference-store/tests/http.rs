@@ -165,7 +165,11 @@ async fn schemas_use_only_standard_formats() {
         .iter()
         .find(|t| t["name"] == "search_products")
         .unwrap();
-    assert_eq!(search["inputSchema"]["properties"]["limit"]["minimum"], 0);
+    let limit = &search["inputSchema"]["properties"]["limit"];
+    assert_eq!(
+        (&limit["minimum"], &limit["maximum"]),
+        (&json!(1), &json!(25))
+    );
 }
 
 #[tokio::test]
@@ -345,4 +349,79 @@ async fn an_unlisted_host_header_is_refused() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+async fn search_error(store: &Running, arguments: Value) -> String {
+    let result = store.call("search_products", arguments).await;
+    error_text(&result).to_owned()
+}
+
+#[tokio::test]
+async fn a_limit_outside_one_to_twenty_five_is_refused() {
+    let store = start(StoreConfig::default()).await;
+    for limit in [0, 26] {
+        let text = search_error(&store, json!({ "limit": limit })).await;
+        assert_eq!(text, "limit must be between 1 and 25.");
+    }
+}
+
+#[tokio::test]
+async fn a_query_of_more_than_twenty_words_is_refused_with_advice() {
+    let store = start(StoreConfig::default()).await;
+    let query = vec!["chain"; 21].join(" ");
+    let text = search_error(&store, json!({ "query": query })).await;
+    assert_eq!(
+        text,
+        "The query has more than 20 words. Keep the few that name the part."
+    );
+}
+
+#[tokio::test]
+async fn oversize_and_blank_text_inputs_are_refused() {
+    let store = start(StoreConfig::default()).await;
+    let long = "x".repeat(101);
+    for (arguments, field) in [
+        (json!({ "brand": long }), "brand"),
+        (json!({ "fits": [long] }), "fits entry"),
+    ] {
+        let text = search_error(&store, arguments).await;
+        assert_eq!(text, format!("{field} is longer than 100 characters."));
+    }
+    let text = search_error(&store, json!({ "fits": ["road", " "] })).await;
+    assert!(text.starts_with("fits has an empty entry"), "{text}");
+    let text = search_error(&store, json!({ "query": "x".repeat(201) })).await;
+    assert_eq!(text, "query is longer than 200 characters.");
+}
+
+#[tokio::test]
+async fn a_long_id_is_refused_and_never_echoed_whole() {
+    let store = start(StoreConfig::default()).await;
+    let id = "9".repeat(5_000);
+    let product = store.call("get_product", json!({ "id": id })).await;
+    assert_eq!(error_text(&product), "id is longer than 100 characters.");
+    let cart = store
+        .call("create_cart", json!({ "items": [{ "id": id }] }))
+        .await;
+    assert!(error_text(&cart).len() < 200);
+    let unknown = "A".repeat(100);
+    let missing = store.call("get_product", json!({ "id": unknown })).await;
+    assert!(error_text(&missing).len() < 200, "{missing}");
+}
+
+#[tokio::test]
+async fn a_request_body_over_64_kib_is_refused() {
+    let store = start(StoreConfig::default()).await;
+    let body = json!({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": { "name": "search_products", "arguments": { "query": "x".repeat(70_000) } }
+    });
+    let response = store
+        .client
+        .post(format!("{}/mcp", store.base))
+        .header("accept", "application/json, text/event-stream")
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }

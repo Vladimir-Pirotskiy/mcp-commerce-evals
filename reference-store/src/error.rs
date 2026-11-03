@@ -39,10 +39,24 @@ pub enum ToolError {
         /// Longest accepted length in characters.
         max: usize,
     },
+    /// The query has more words than the store searches for.
+    TooManyWords {
+        /// Most query words.
+        max: usize,
+    },
     /// `fits` has more entries than allowed.
     TooManyFits {
         /// Most entries.
         max: usize,
+    },
+    /// A `fits` entry is empty or only whitespace.
+    BlankFit,
+    /// `limit` is outside the allowed range.
+    Limit {
+        /// Smallest accepted value.
+        min: u32,
+        /// Largest accepted value.
+        max: u32,
     },
     /// No part has this id.
     UnknownPart {
@@ -83,7 +97,16 @@ impl fmt::Display for ToolError {
             Self::TooLong { field, max } => {
                 write!(f, "{field} is longer than {max} characters.")
             }
+            Self::TooManyWords { max } => write!(
+                f,
+                "The query has more than {max} words. Keep the few that name the part."
+            ),
             Self::TooManyFits { max } => write!(f, "fits takes at most {max} requirements."),
+            Self::BlankFit => write!(
+                f,
+                "fits has an empty entry. Remove it or write a requirement such as 11-speed."
+            ),
+            Self::Limit { min, max } => write!(f, "limit must be between {min} and {max}."),
             Self::UnknownPart { id } => write!(
                 f,
                 "No part has the id '{}'. Copy ids from search_products results.",
