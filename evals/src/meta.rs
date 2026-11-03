@@ -3,7 +3,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::assistant::{SYSTEM_PROMPT, TEMPERATURE};
+use crate::assistant::SYSTEM_PROMPT;
 use crate::hash::sha256_hex;
 use crate::mcp::ServerHandshake;
 
@@ -15,8 +15,8 @@ const GIT_COMMIT: Option<&str> = option_env!("MCP_EVALS_GIT_COMMIT");
 pub struct AssistantMeta {
     /// Model that answered.
     pub model: String,
-    /// Sampling temperature that was sent.
-    pub temperature: f64,
+    /// Sampling temperature that was sent; null when none was.
+    pub temperature: Option<f64>,
     /// Most model turns per query.
     pub max_turns: u32,
     /// SHA-256 of the system prompt.
@@ -26,10 +26,10 @@ pub struct AssistantMeta {
 impl AssistantMeta {
     /// The settings for a run of `model` with at most `max_turns` turns per query.
     #[must_use]
-    pub fn new(model: &str, max_turns: u32) -> Self {
+    pub fn new(model: &str, temperature: Option<f64>, max_turns: u32) -> Self {
         Self {
             model: model.to_owned(),
-            temperature: TEMPERATURE,
+            temperature,
             max_turns,
             system_prompt_sha256: sha256_hex(SYSTEM_PROMPT.as_bytes()),
         }
@@ -118,7 +118,11 @@ mod tests {
             timeout_secs: 60,
         };
 
-        let meta = Meta::new(&settings, &handshake, Some(AssistantMeta::new("m", 8)));
+        let meta = Meta::new(
+            &settings,
+            &handshake,
+            Some(AssistantMeta::new("m", None, 8)),
+        );
 
         assert_eq!(meta.crate_version, env!("CARGO_PKG_VERSION"));
         assert_eq!(
@@ -129,6 +133,6 @@ mod tests {
         assert_eq!(meta.protocol_version, "2025-06-18");
         let assistant = meta.assistant.expect("assistant meta");
         assert_eq!(assistant.system_prompt_sha256.len(), 64);
-        assert_eq!((assistant.temperature, assistant.max_turns), (0.0, 8));
+        assert_eq!((assistant.temperature, assistant.max_turns), (None, 8));
     }
 }

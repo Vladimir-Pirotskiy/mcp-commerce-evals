@@ -160,12 +160,13 @@ and the failed gate is printed. The JSON report is written first, and `--out` re
 existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
 the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
 the server's `serverInfo` and negotiated protocol version, and for assistant runs the model,
-temperature, `max_turns` and a hash of the system prompt. `--timeout-secs` (default 60) bounds every
+temperature (null when none was sent), `max_turns` and a hash of the system prompt. `--timeout-secs` (default 60) bounds every
 HTTP request, to the store and to the model API.
 
 **Assistant-level (optional, costs tokens).** `--assistant anthropic` gives a model the store's
 tools through the Anthropic Messages API and lets it work until it answers, at most `--max-turns`
-(default 8), at temperature 0. The system prompt does not name a kind of store and asks the model
+(default 8), with the API's default sampling unless `--temperature <0-1>` is given (it is sent only then, since
+some models reject it). The system prompt does not name a kind of store and asks the model
 to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
 only when that committed id equals an expected id after normalising case and punctuation; whether
 the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`).

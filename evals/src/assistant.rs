@@ -19,8 +19,6 @@ use crate::queries::Query;
 pub const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 /// Model used when none is given.
 pub const DEFAULT_MODEL: &str = "claude-haiku-5-5";
-/// Sampling temperature of every request, fixed so that a rerun differs as little as possible.
-pub const TEMPERATURE: f64 = 0.0;
 /// The system prompt. It is the same for every store: only the committed `ANSWER:` line is scored.
 pub const SYSTEM_PROMPT: &str = "You are a shopping assistant for an online store. \
 Use the store's tools to find products; never guess a part number. When you have chosen, give \
@@ -74,6 +72,7 @@ pub struct Anthropic {
     base_url: String,
     key: ApiKey,
     model: String,
+    temperature: Option<f64>,
     backoff_base: Duration,
 }
 
@@ -89,8 +88,16 @@ impl Anthropic {
             base_url: base_url.trim_end_matches('/').to_owned(),
             key,
             model: model.to_owned(),
+            temperature: None,
             backoff_base: DEFAULT_BACKOFF_BASE,
         })
+    }
+
+    /// Sends `temperature` with every request; without this none is sent.
+    #[must_use]
+    pub fn with_temperature(mut self, temperature: Option<f64>) -> Self {
+        self.temperature = temperature;
+        self
     }
 
     /// Replaces the first backoff step, so tests need not wait for real delays.
@@ -315,10 +322,14 @@ async fn converse(
 ) -> Result<()> {
     let mut messages = vec![json!({ "role": "user", "content": query.text })];
     for _ in 0..max_turns {
-        let body = json!({
-            "model": api.model, "max_tokens": MAX_TOKENS, "temperature": TEMPERATURE,
+        let mut body = json!({
+            "model": api.model, "max_tokens": MAX_TOKENS,
             "system": SYSTEM_PROMPT, "tools": tools, "messages": messages,
         });
+        // Sent only when asked for: some current models reject the parameter outright.
+        if let (Some(temperature), Some(fields)) = (api.temperature, body.as_object_mut()) {
+            fields.insert("temperature".to_owned(), json!(temperature));
+        }
         let reply = api.create(&body).await?;
         result.turns += 1;
         result.input_tokens += reply["usage"]["input_tokens"].as_u64().unwrap_or(0);
@@ -411,8 +422,8 @@ pub struct AssistantSummary {
 pub struct AssistantReport {
     /// Model that answered.
     pub model: String,
-    /// Sampling temperature that was sent.
-    pub temperature: f64,
+    /// Sampling temperature that was sent; null when none was.
+    pub temperature: Option<f64>,
     /// Scores over every query.
     pub overall: AssistantSummary,
     /// Scores per query kind.
@@ -441,14 +452,18 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
 impl AssistantReport {
     /// Builds the report for the results gathered so far.
     #[must_use]
-    pub fn from_results(model: &str, results: Vec<AssistantResult>) -> Self {
+    pub fn from_results(
+        model: &str,
+        temperature: Option<f64>,
+        results: Vec<AssistantResult>,
+    ) -> Self {
         let mut kinds: BTreeMap<String, Vec<&AssistantResult>> = BTreeMap::new();
         for result in &results {
             kinds.entry(result.kind.clone()).or_default().push(result);
         }
         Self {
             model: model.to_owned(),
-            temperature: TEMPERATURE,
+            temperature,
             overall: summarize(&results.iter().collect::<Vec<_>>()),
             by_kind: kinds
                 .iter()
@@ -476,9 +491,17 @@ pub async fn run(
     let mut results = Vec::with_capacity(queries.len());
     for query in queries {
         results.push(answer(api, mcp, &tools, query, max_turns).await);
-        on_progress(&AssistantReport::from_results(&api.model, results.clone()))?;
+        on_progress(&AssistantReport::from_results(
+            &api.model,
+            api.temperature,
+            results.clone(),
+        ))?;
     }
-    Ok(AssistantReport::from_results(&api.model, results))
+    Ok(AssistantReport::from_results(
+        &api.model,
+        api.temperature,
+        results,
+    ))
 }
 
 #[cfg(test)]

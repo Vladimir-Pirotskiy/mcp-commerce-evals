@@ -47,19 +47,34 @@ impl EvalReport {
     }
 }
 
+/// `value` to two places; a zero that is negative (or rounds to one) prints as `0.00`.
+fn two_places(value: f64) -> String {
+    let text = format!("{value:.2}");
+    if text == "-0.00" {
+        "0.00".to_owned()
+    } else {
+        text
+    }
+}
+
 fn interval(value: f64, ci: Interval) -> String {
-    format!("{value:.2} ({:.2}-{:.2})", ci.low, ci.high)
+    format!(
+        "{} ({}-{})",
+        two_places(value),
+        two_places(ci.low),
+        two_places(ci.high)
+    )
 }
 
 fn tool_row(label: &str, s: &Summary) -> String {
     format!(
-        "| {label} | {} | {} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} |\n",
+        "| {label} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} |\n",
         s.n,
         interval(s.hit_at_1, s.hit_at_1_ci),
         interval(s.hit_at_5, s.hit_at_5_ci),
-        s.recall_at_10,
-        s.ndcg_at_10,
-        s.mrr,
+        two_places(s.recall_at_10),
+        two_places(s.ndcg_at_10),
+        two_places(s.mrr),
         s.latency_p50_ms,
         s.latency_p95_ms
     )
@@ -135,12 +150,29 @@ fn assistant_row(label: &str, s: &AssistantSummary) -> String {
 #[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {} (temperature {})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
-        report.model, report.temperature
+        "Model: {} ({})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        report.model,
+        report.temperature.map_or_else(
+            || "no temperature sent".to_owned(),
+            |t| format!("temperature {t}")
+        )
     );
     for (kind, summary) in &report.by_kind {
         out.push_str(&assistant_row(kind, summary));
     }
     out.push_str(&assistant_row("**all**", &report.overall));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_negative_zero_prints_as_plain_zero() {
+        assert_eq!(two_places(-0.0), "0.00");
+        assert_eq!(two_places(-0.001), "0.00");
+        assert_eq!(two_places(-0.5), "-0.50");
+        assert_eq!(two_places(0.456), "0.46");
+    }
 }

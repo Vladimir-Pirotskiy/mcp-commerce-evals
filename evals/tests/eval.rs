@@ -147,6 +147,7 @@ async fn a_missing_search_tool_is_reported_per_query_not_as_a_crash() {
 }
 
 /// One scripted reply of the mock Messages API.
+#[derive(Clone)]
 struct Reply {
     status: u16,
     body: Value,
@@ -298,7 +299,11 @@ async fn the_model_searches_through_the_store_and_commits_to_the_right_part() {
     let seen = mock.seen.lock().unwrap();
     assert_eq!(seen[0].0, "test-key");
     assert_eq!(seen[0].1["model"], "test-model");
-    assert_eq!(seen[0].1["temperature"], 0.0);
+    assert!(
+        seen[0].1.get("temperature").is_none(),
+        "no temperature is sent by default: {}",
+        seen[0].1
+    );
     assert!(
         seen[0].1["system"]
             .as_str()
@@ -456,7 +461,7 @@ async fn the_report_scores_each_query_and_counts_unanswered_apart_from_errors() 
         .unwrap();
 
     assert_eq!(report.model, "test-model");
-    assert_eq!(report.temperature, 0.0);
+    assert_eq!(report.temperature, None);
     let overall = &report.overall;
     assert_eq!((overall.n, overall.errors, overall.unanswered), (4, 1, 1));
     assert_eq!(overall.answer_accuracy, 0.25);
@@ -694,4 +699,55 @@ async fn assistant_progress_reports_the_partial_results_after_every_query() {
     .unwrap();
 
     assert_eq!(seen, [(1, 1.0), (2, 0.5)]);
+}
+
+#[tokio::test]
+async fn a_requested_temperature_is_sent_and_recorded() {
+    let store = spawn_store().await;
+    let (api_server, mock) = spawn_mock(vec![final_answer("ANSWER: none")]).await;
+    let api = client(&api_server, "k").with_temperature(Some(0.3));
+    let mut mcp = connect(&store.base).await;
+
+    let report = assistant::run(&api, &mut mcp, &[query("a", "one", "A-1")], 2, |_| Ok(()))
+        .await
+        .unwrap();
+
+    assert_eq!(report.temperature, Some(0.3));
+    assert_eq!(mock.seen.lock().unwrap()[0].1["temperature"], 0.3);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_2_when_every_assistant_query_fails_with_an_api_error() {
+    let store = spawn_store().await;
+    let script = vec![Reply::new(400, json!({ "error": { "message": "nope" } })); 64];
+    let (api_server, _) = spawn_mock(script).await;
+    let out = scratch_file("assistant-errors");
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mcp-commerce-evals"));
+    command
+        .args([
+            "--url",
+            &format!("{}/mcp", store.base),
+            "--queries",
+            QUERIES,
+        ])
+        .args(["--assistant", "anthropic", "--out"])
+        .arg(&out)
+        .env("ANTHROPIC_API_KEY", "test-key")
+        .env("ANTHROPIC_BASE_URL", &api_server.base);
+    let output = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .expect("join")
+        .expect("run the binary");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(report["tool_level"]["overall"]["errors"], 0);
+    assert!(
+        report["assistant_level"]["overall"]["errors"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert!(report["assistant_level"]["temperature"].is_null());
 }

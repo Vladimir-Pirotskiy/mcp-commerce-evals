@@ -64,6 +64,10 @@ struct Args {
     /// Seconds before an HTTP request to the store or the model API gives up.
     #[arg(long, default_value_t = 60)]
     timeout_secs: u64,
+    /// Sampling temperature (0 to 1) for the assistant-level run; sent only when given, because
+    /// some models reject the parameter.
+    #[arg(long, value_parser = parse_temperature)]
+    temperature: Option<f64>,
     /// Most model turns per query in the assistant-level run.
     #[arg(long, default_value_t = 8)]
     max_turns: u32,
@@ -80,19 +84,25 @@ async fn main() -> ExitCode {
     }
 }
 
+/// Parses `--temperature`: a number from 0 to 1.
+fn parse_temperature(text: &str) -> std::result::Result<f64, String> {
+    match text.parse::<f64>() {
+        Ok(value) if (0.0..=1.0).contains(&value) => Ok(value),
+        _ => Err(format!("{text:?} is not a number from 0 to 1")),
+    }
+}
+
 /// The Anthropic client for `--assistant`, built before any traffic so a bad key fails fast.
 fn anthropic_client(args: &Args, timeout: Duration) -> Result<Option<Anthropic>> {
     match args.assistant {
         Some(Provider::Anthropic) => {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .map_err(|_| Error::Input("ANTHROPIC_API_KEY is not set".to_owned()))?;
-            Anthropic::new(
-                ApiKey::new(key)?,
-                &args.model,
-                assistant::DEFAULT_BASE_URL,
-                timeout,
-            )
-            .map(Some)
+            // The override exists so the tests can point the binary at a mock API.
+            let base_url = std::env::var("ANTHROPIC_BASE_URL")
+                .unwrap_or_else(|_| assistant::DEFAULT_BASE_URL.to_owned());
+            Anthropic::new(ApiKey::new(key)?, &args.model, &base_url, timeout)
+                .map(|api| Some(api.with_temperature(args.temperature)))
         }
         None => Ok(None),
     }
@@ -125,7 +135,7 @@ async fn run(args: Args) -> Result<u8> {
     };
     let assistant_meta = api
         .as_ref()
-        .map(|_| AssistantMeta::new(&args.model, args.max_turns));
+        .map(|_| AssistantMeta::new(&args.model, args.temperature, args.max_turns));
     let mut report = EvalReport {
         meta: Meta::new(&settings, mcp.handshake(), assistant_meta),
         store_url: args.url.clone(),
@@ -167,7 +177,11 @@ fn exit_status_of(report: &EvalReport, args: &Args) -> u8 {
     for failure in &failures {
         eprintln!("mcp-commerce-evals: {failure}");
     }
-    let query_errors = report.tool_level.overall.errors;
+    let query_errors = report.tool_level.overall.errors
+        + report
+            .assistant_level
+            .as_ref()
+            .map_or(0, |assistant| assistant.overall.errors);
     if query_errors > 0 {
         eprintln!("mcp-commerce-evals: {query_errors} queries errored");
     }
