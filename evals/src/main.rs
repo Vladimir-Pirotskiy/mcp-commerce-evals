@@ -78,6 +78,7 @@ async fn main() -> ExitCode {
 
 async fn run(args: Args) -> Result<u8> {
     refuse_to_overwrite(&args.out, args.force)?;
+    let timeout = Duration::from_secs(args.timeout_secs);
     let queries = queries::load(&args.queries)?;
     // Read the key before any network traffic so a missing key fails fast.
     let api = match args.assistant {
@@ -85,14 +86,15 @@ async fn run(args: Args) -> Result<u8> {
             let key = std::env::var("ANTHROPIC_API_KEY")
                 .map_err(|_| Error::Input("ANTHROPIC_API_KEY is not set".to_owned()))?;
             Some(Anthropic::new(
-                ApiKey::new(key),
+                ApiKey::new(key)?,
                 &args.model,
                 assistant::DEFAULT_BASE_URL,
-            ))
+                timeout,
+            )?)
         }
         None => None,
     };
-    let mut mcp = McpClient::connect(&args.url, Duration::from_secs(args.timeout_secs)).await?;
+    let mut mcp = McpClient::connect(&args.url, timeout).await?;
     let options = tool_level::Options {
         search_tool: args.search_tool,
         top_k: args.top_k,

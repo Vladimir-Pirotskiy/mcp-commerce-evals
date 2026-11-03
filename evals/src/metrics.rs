@@ -45,7 +45,12 @@ pub struct Summary {
     pub latency_mean_ms: f64,
 }
 
-fn share(count: usize, n: usize) -> f64 {
+/// `count` as a share of `n`, 0 when `n` is 0.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "counts of queries are far below 2^52, so the conversion is exact"
+)]
+pub(crate) fn share(count: usize, n: usize) -> f64 {
     if n == 0 { 0.0 } else { count as f64 / n as f64 }
 }
 

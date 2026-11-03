@@ -134,10 +134,27 @@ async fn a_missing_search_tool_is_reported_per_query_not_as_a_crash() {
     assert_eq!(report.overall.hit_at_5, 0.0);
 }
 
+/// One scripted reply of the mock Messages API.
+struct Reply {
+    status: u16,
+    body: Value,
+    retry_after: Option<&'static str>,
+}
+
+impl Reply {
+    fn new(status: u16, body: Value) -> Self {
+        Self {
+            status,
+            body,
+            retry_after: None,
+        }
+    }
+}
+
 /// A scripted stand-in for `POST /v1/messages` that records what it was sent.
 #[derive(Default)]
 struct MockApi {
-    script: Mutex<VecDeque<(u16, Value)>>,
+    script: Mutex<VecDeque<Reply>>,
     seen: Mutex<Vec<(String, Value)>>,
 }
 
@@ -145,23 +162,31 @@ async fn messages(
     State(mock): State<Arc<MockApi>>,
     headers: HeaderMap,
     Json(body): Json<Value>,
-) -> (StatusCode, Json<Value>) {
+) -> (StatusCode, HeaderMap, Json<Value>) {
     let key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_owned();
     mock.seen.lock().expect("lock").push((key, body));
-    let (status, reply) = mock
+    let reply = mock
         .script
         .lock()
         .expect("lock")
         .pop_front()
-        .unwrap_or((500, json!({ "error": { "message": "script exhausted" } })));
-    (StatusCode::from_u16(status).expect("status"), Json(reply))
+        .unwrap_or_else(|| Reply::new(400, json!({ "error": { "message": "script exhausted" } })));
+    let mut out_headers = HeaderMap::new();
+    if let Some(seconds) = reply.retry_after {
+        out_headers.insert("retry-after", seconds.parse().expect("header value"));
+    }
+    (
+        StatusCode::from_u16(reply.status).expect("status"),
+        out_headers,
+        Json(reply.body),
+    )
 }
 
-async fn spawn_mock(script: Vec<(u16, Value)>) -> (Server, Arc<MockApi>) {
+async fn spawn_mock(script: Vec<Reply>) -> (Server, Arc<MockApi>) {
     let mock = Arc::new(MockApi {
         script: Mutex::new(script.into()),
         ..MockApi::default()
@@ -177,30 +202,45 @@ async fn spawn_mock(script: Vec<(u16, Value)>) -> (Server, Arc<MockApi>) {
     (Server { base, task }, mock)
 }
 
-fn tool_use(query: &str) -> (u16, Value) {
-    (
+fn api_reply(stop_reason: &str, content: Value) -> Reply {
+    Reply::new(
         200,
         json!({
-            "stop_reason": "tool_use",
-            "content": [
-                { "type": "text", "text": "Let me look." },
-                { "type": "tool_use", "id": "toolu_1", "name": "search_products",
-                  "input": { "query": query, "limit": 3 } }
-            ],
+            "stop_reason": stop_reason,
+            "content": content,
             "usage": { "input_tokens": 100, "output_tokens": 20 }
         }),
     )
 }
 
-fn final_answer(text: &str) -> (u16, Value) {
-    (
-        200,
-        json!({
-            "stop_reason": "end_turn",
-            "content": [{ "type": "text", "text": text }],
-            "usage": { "input_tokens": 150, "output_tokens": 30 }
-        }),
+fn tool_use(query: &str) -> Reply {
+    api_reply(
+        "tool_use",
+        json!([
+            { "type": "text", "text": "Let me look." },
+            { "type": "tool_use", "id": "toolu_1", "name": "search_products",
+              "input": { "query": query, "limit": 3 } }
+        ]),
     )
+}
+
+fn reply_with(stop_reason: &str, text: &str) -> Reply {
+    api_reply(stop_reason, json!([{ "type": "text", "text": text }]))
+}
+
+fn final_answer(text: &str) -> Reply {
+    reply_with("end_turn", text)
+}
+
+fn client(api_server: &Server, key: &str) -> Anthropic {
+    Anthropic::new(
+        ApiKey::new(key.to_owned()).expect("key"),
+        "test-model",
+        &api_server.base,
+        TIMEOUT,
+    )
+    .expect("client")
+    .with_backoff_base(Duration::ZERO)
 }
 
 fn query(id: &str, text: &str, expected: &str) -> Query {
@@ -208,19 +248,21 @@ fn query(id: &str, text: &str, expected: &str) -> Query {
         .expect("query")
 }
 
+/// Asks the model one query against a store with no tools exposed to it.
+async fn ask(api: &Anthropic, store: &Server, expected: &str) -> assistant::AssistantResult {
+    let mut mcp = connect(&store.base).await;
+    assistant::answer(api, &mut mcp, &[], &query("a", "a chain", expected), 8).await
+}
+
 #[tokio::test]
-async fn the_model_searches_through_the_store_and_names_the_part() {
+async fn the_model_searches_through_the_store_and_commits_to_the_right_part() {
     let store = spawn_store().await;
     let (api_server, mock) = spawn_mock(vec![
         tool_use("FER-CH-4296"),
-        final_answer("Take FER-CH-4296, an 11-speed chain."),
+        final_answer("An 11-speed chain.\nANSWER: FER-CH-4296"),
     ])
     .await;
-    let api = Anthropic::new(
-        ApiKey::new("test-key".to_owned()),
-        "test-model",
-        &api_server.base,
-    );
+    let api = client(&api_server, "test-key");
     let mut mcp = connect(&store.base).await;
     let tools = api_tools(&mcp.list_tools().await.unwrap());
 
@@ -234,21 +276,24 @@ async fn the_model_searches_through_the_store_and_names_the_part() {
     .await;
 
     assert_eq!(result.error, None);
-    assert!(result.named_expected);
+    assert!(result.correct && result.answered);
+    assert_eq!(result.committed.as_deref(), Some("FER-CH-4296"));
+    assert_eq!(result.stop_reason.as_deref(), Some("end_turn"));
     assert_eq!((result.tool_calls, result.turns), (1, 2));
     assert_eq!(result.tools_used, ["search_products"]);
-    assert_eq!((result.input_tokens, result.output_tokens), (250, 50));
+    assert_eq!((result.input_tokens, result.output_tokens), (200, 40));
 
     let seen = mock.seen.lock().unwrap();
     assert_eq!(seen[0].0, "test-key");
     assert_eq!(seen[0].1["model"], "test-model");
-    let names: Vec<_> = seen[0].1["tools"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|t| t["name"].clone())
-        .collect();
-    assert_eq!(names.len(), 4);
+    assert_eq!(seen[0].1["temperature"], 0.0);
+    assert!(
+        seen[0].1["system"]
+            .as_str()
+            .unwrap()
+            .contains("ANSWER: <part id>")
+    );
+    assert_eq!(seen[0].1["tools"].as_array().unwrap().len(), 4);
     assert!(seen[0].1["tools"][0]["input_schema"]["type"] == "object");
     let reply = &seen[1].1["messages"][2]["content"][0];
     assert_eq!(reply["type"], "tool_result");
@@ -257,63 +302,158 @@ async fn the_model_searches_through_the_store_and_names_the_part() {
 }
 
 #[tokio::test]
-async fn an_api_error_is_recorded_without_leaking_the_key() {
+async fn a_mention_without_the_committed_id_is_not_correct() {
     let store = spawn_store().await;
-    let denied =
-        json!({ "error": { "type": "authentication_error", "message": "invalid x-api-key" } });
-    let (api_server, _) = spawn_mock(vec![(401, denied)]).await;
-    let api = Anthropic::new(
-        ApiKey::new("sk-do-not-print".to_owned()),
-        "test-model",
-        &api_server.base,
-    );
-    let mut mcp = connect(&store.base).await;
+    let text = "FER-CH-4296 is close but too dear.\nANSWER: FER-CH-1581";
+    let (api_server, _) = spawn_mock(vec![final_answer(text)]).await;
 
-    let result = assistant::answer(&api, &mut mcp, &[], &query("a", "chain", "X-1"), 8).await;
+    let result = ask(&client(&api_server, "k"), &store, "FER-CH-4296").await;
+
+    assert!(!result.correct);
+    assert!(result.mentions_expected);
+}
+
+#[tokio::test]
+async fn answering_none_is_not_correct() {
+    let store = spawn_store().await;
+    let (api_server, _) = spawn_mock(vec![final_answer("Nothing fits.\nANSWER: none")]).await;
+
+    let result = ask(&client(&api_server, "k"), &store, "FER-CH-4296").await;
+
+    assert!(!result.correct && result.answered);
+}
+
+#[tokio::test]
+async fn a_stop_reason_other_than_end_turn_is_recorded_and_not_answered() {
+    let store = spawn_store().await;
+    for stop_reason in ["max_tokens", "refusal", "pause_turn"] {
+        let text = "ANSWER: FER-CH-4296";
+        let (api_server, _) = spawn_mock(vec![reply_with(stop_reason, text)]).await;
+
+        let result = ask(&client(&api_server, "k"), &store, "FER-CH-4296").await;
+
+        assert_eq!(result.stop_reason.as_deref(), Some(stop_reason));
+        assert!(!result.answered && !result.correct, "{stop_reason}");
+        assert_eq!(result.committed, None, "{stop_reason}");
+        assert_eq!(result.error, None, "{stop_reason}");
+    }
+}
+
+#[tokio::test]
+async fn a_429_with_retry_after_is_retried_and_then_succeeds() {
+    let store = spawn_store().await;
+    let limited = Reply {
+        retry_after: Some("0"),
+        ..Reply::new(429, json!({ "error": { "message": "slow down" } }))
+    };
+    let (api_server, mock) = spawn_mock(vec![limited, final_answer("ANSWER: X-1")]).await;
+
+    let result = ask(&client(&api_server, "k"), &store, "X-1").await;
+
+    assert_eq!(result.error, None);
+    assert!(result.correct);
+    assert_eq!(mock.seen.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn overload_and_server_faults_are_retried_up_to_three_times() {
+    let store = spawn_store().await;
+    let fault = |status| Reply::new(status, json!({ "error": { "message": "try later" } }));
+    let (api_server, mock) = spawn_mock(vec![fault(529), fault(500), fault(503), fault(529)]).await;
+
+    let result = ask(&client(&api_server, "k"), &store, "X-1").await;
+
+    let error = result.error.expect("gives up");
+    assert!(error.contains("529"), "{error}");
+    assert_eq!(
+        mock.seen.lock().unwrap().len(),
+        4,
+        "one attempt plus three retries"
+    );
+}
+
+#[tokio::test]
+async fn a_401_is_not_retried_and_its_message_never_contains_the_key() {
+    let store = spawn_store().await;
+    let denied = json!({ "error": { "type": "authentication_error",
+                                    "message": "invalid x-api-key sk-do-not-print" } });
+    let (api_server, mock) = spawn_mock(vec![Reply::new(401, denied)]).await;
+    let api = client(&api_server, "sk-do-not-print");
+
+    let result = ask(&api, &store, "X-1").await;
 
     let error = result.error.expect("the run fails");
     assert!(error.contains("401"), "{error}");
     assert!(!error.contains("sk-do-not-print") && !format!("{api:?}").contains("sk-do-not-print"));
-    assert!(!result.named_expected);
+    assert_eq!(mock.seen.lock().unwrap().len(), 1);
+    assert!(!result.correct);
 }
 
 #[tokio::test]
-async fn the_assistant_report_scores_each_query_and_gives_up_after_the_turn_limit() {
+async fn a_slow_api_hits_the_request_timeout() {
+    let store = spawn_store().await;
+    let router = Router::new().route(
+        "/v1/messages",
+        post(|| async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Json(json!({}))
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
+    let base = format!("http://{}", listener.local_addr().expect("local address"));
+    let task = tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    let slow = Server { base, task };
+    let api = Anthropic::new(
+        ApiKey::new("k".to_owned()).expect("key"),
+        "m",
+        &slow.base,
+        Duration::from_millis(100),
+    )
+    .expect("client");
+
+    let result = ask(&api, &store, "X-1").await;
+
+    assert!(result.error.expect("times out").contains("HTTP error"));
+}
+
+#[tokio::test]
+async fn the_report_scores_each_query_and_counts_unanswered_apart_from_errors() {
     let store = spawn_store().await;
     let script = vec![
         tool_use("FER-CH-4296"),
-        final_answer("FER-CH-4296"),
-        final_answer("I would pick ALD-CH-0000."),
+        final_answer("ANSWER: FER-CH-4296"),
+        final_answer("I would pick ALD-CH-0000.\nANSWER: ALD-CH-0000"),
         tool_use("chain"),
         tool_use("chain"),
+        Reply::new(400, json!({ "error": { "message": "bad request" } })),
     ];
     let (api_server, _) = spawn_mock(script).await;
-    let api = Anthropic::new(
-        ApiKey::new("test-key".to_owned()),
-        "test-model",
-        &api_server.base,
-    );
+    let api = client(&api_server, "test-key");
     let mut mcp = connect(&store.base).await;
     let queries = [
         query("a", "chain one", "FER-CH-4296"),
         query("b", "chain two", "FER-CH-4296"),
         query("c", "chain three", "FER-CH-4296"),
+        query("d", "chain four", "FER-CH-4296"),
     ];
 
     let report = assistant::run(&api, &mut mcp, &queries, 2).await.unwrap();
 
     assert_eq!(report.model, "test-model");
-    assert_eq!(report.overall.n, 3);
-    assert!((report.overall.answer_accuracy - 1.0 / 3.0).abs() < 1e-9);
-    assert_eq!(report.overall.errors, 1);
-    assert_eq!(report.overall.mean_tool_calls, 1.0);
-    assert!(
-        report.queries[2]
-            .error
-            .as_deref()
-            .unwrap()
-            .contains("no final answer after 2 turns")
-    );
+    assert_eq!(report.temperature, 0.0);
+    let overall = &report.overall;
+    assert_eq!((overall.n, overall.errors, overall.unanswered), (4, 1, 1));
+    assert_eq!(overall.answer_accuracy, 0.25);
+    assert!((overall.answer_accuracy_without_errors - 1.0 / 3.0).abs() < 1e-9);
+    assert_eq!(report.queries[2].stop_reason.as_deref(), Some("tool_use"));
+    assert!(!report.queries[2].answered && report.queries[2].error.is_none());
+}
+
+#[test]
+fn an_empty_api_key_is_rejected_before_any_request() {
+    assert!(ApiKey::new(String::new()).is_err());
 }
 
 /// A stand-in MCP server whose `tools/call` always returns `call_result`.

@@ -78,16 +78,24 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
 
 fn assistant_row(label: &str, s: &AssistantSummary) -> String {
     format!(
-        "| {label} | {} | {:.2} | {:.1} | {} | {} | {} |\n",
-        s.n, s.answer_accuracy, s.mean_tool_calls, s.input_tokens, s.output_tokens, s.errors
+        "| {label} | {} | {:.2} | {:.2} | {:.2} | {} | {} | {:.1} | {} | {} |\n",
+        s.n,
+        s.answer_accuracy,
+        s.answer_accuracy_without_errors,
+        s.mentions_expected,
+        s.unanswered,
+        s.errors,
+        s.mean_tool_calls,
+        s.input_tokens,
+        s.output_tokens
     )
 }
 
 /// The assistant-level result as a Markdown table.
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
-        "Model: {}\n\n| kind | queries | answer names expected part | tool calls per query | input tokens | output tokens | errors |\n|---|---:|---:|---:|---:|---:|---:|\n",
-        report.model
+        "Model: {} (temperature {})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",
+        report.model, report.temperature
     );
     for (kind, summary) in &report.by_kind {
         out.push_str(&assistant_row(kind, summary));
