@@ -218,8 +218,10 @@ pub async fn serve_with_limits(
                 Err(error) => {
                     // Out of file descriptors and the like: back off instead of spinning.
                     eprintln!("reference-store: accept failed: {error}");
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                    continue;
+                    tokio::select! {
+                        () = &mut shutdown => break,
+                        () = tokio::time::sleep(Duration::from_secs(1)) => continue,
+                    }
                 }
             },
         };
