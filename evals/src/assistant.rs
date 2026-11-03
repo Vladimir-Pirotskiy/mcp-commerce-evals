@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 use crate::mcp::McpClient;
-use crate::metrics::{Interval, normalize, pass_at_k, share, wilson};
+use crate::metrics::{Interval, normalize, normalized_ids, pass_at_k, share, wilson};
 use crate::queries::{NO_MATCH_KIND, Query};
 
 /// Production endpoint of the API.
@@ -262,7 +262,9 @@ pub struct AssistantResult {
 #[must_use]
 pub fn names_expected(answer: &str, expected: &[String]) -> bool {
     let answer = normalize(answer);
-    expected.iter().any(|id| answer.contains(&normalize(id)))
+    normalized_ids(expected)
+        .iter()
+        .any(|id| answer.contains(id.as_str()))
 }
 
 /// What the last non-empty line of a reply commits to, if it is an `ANSWER:` line. Markdown
@@ -285,7 +287,7 @@ pub fn is_correct(committed: Option<&str>, expected: &[String]) -> bool {
         if expected.is_empty() {
             said_none
         } else {
-            !said_none && expected.iter().any(|id| normalize(id) == normalize(value))
+            !said_none && normalized_ids(expected).contains(&normalize(value))
         }
     })
 }
@@ -685,6 +687,14 @@ mod tests {
         ));
         assert!(!names_expected("Get ALD-CH-1003 instead.", &expected));
         assert!(!names_expected("", &expected));
+    }
+
+    #[test]
+    fn an_id_that_normalizes_to_nothing_is_never_mentioned_or_correct() {
+        let expected = ["東京".to_owned()];
+        assert!(!names_expected("anything at all", &expected));
+        assert!(!is_correct(Some("日本"), &expected));
+        assert!(!is_correct(Some("!!!"), &["???".to_owned()]));
     }
 
     #[test]

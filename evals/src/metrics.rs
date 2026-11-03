@@ -9,6 +9,8 @@ use serde::Serialize;
 use crate::tool_level::QueryResult;
 
 /// Lowercase letters and digits only, so `ALD-CH-1002`, `ald ch 1002` and `aldch1002` agree.
+/// An id with none (all punctuation or non-ASCII) normalizes to the empty string; callers treat
+/// that as matching nothing, never as an id (see [`normalized_ids`]).
 pub fn normalize(id: &str) -> String {
     id.chars()
         .filter(char::is_ascii_alphanumeric)
@@ -16,10 +18,19 @@ pub fn normalize(id: &str) -> String {
         .collect()
 }
 
+/// The normalized forms of `ids`, leaving out any that normalize to nothing, so an empty key can
+/// never be "expected" and match another empty key.
+pub(crate) fn normalized_ids(ids: &[String]) -> Vec<String> {
+    ids.iter()
+        .map(|id| normalize(id))
+        .filter(|id| !id.is_empty())
+        .collect()
+}
+
 /// 1-based position of the first returned id that is expected.
 #[must_use]
 pub fn rank_of(returned: &[Option<String>], expected: &[String]) -> Option<usize> {
-    let wanted: Vec<String> = expected.iter().map(|id| normalize(id)).collect();
+    let wanted = normalized_ids(expected);
     returned
         .iter()
         .position(|id| {
@@ -166,7 +177,8 @@ pub struct Summary {
     pub hit_at_5: f64,
     /// 95% Wilson interval of `hit_at_5`.
     pub hit_at_5_ci: Interval,
-    /// Mean reciprocal rank (0 for a query with no right answer in the results).
+    /// Mean reciprocal rank (0 for a query with no right answer in the first [`RANK_DEPTH`]
+    /// results).
     pub mrr: f64,
     /// 95% bootstrap interval of `mrr` (seeded, see [`BOOTSTRAP_SEED`]).
     pub mrr_ci: Interval,
@@ -212,7 +224,7 @@ fn percentile(sorted: &[f64], percent: usize) -> f64 {
 
 /// The distinct normalised ids a query accepts.
 fn wanted_set(expected: &[String]) -> HashSet<String> {
-    expected.iter().map(|id| normalize(id)).collect()
+    normalized_ids(expected).into_iter().collect()
 }
 
 /// Capped recall@k: the expected ids found in the first `k` returned ids, divided by
@@ -270,7 +282,12 @@ pub fn summarize<R: Borrow<QueryResult>>(results: &[R]) -> Summary {
     let (hits_1, hits_5) = (at(1), at(HIT_DEPTH));
     let per_query =
         |score: fn(&QueryResult) -> f64| -> Vec<f64> { results.iter().map(|r| score(r)).collect() };
-    let reciprocal = per_query(|r| r.rank.map_or(0.0, |rank| 1.0 / to_f64(rank)));
+    // Capped at the depth recall and nDCG use, so a right answer beyond it scores 0 everywhere.
+    let reciprocal = per_query(|r| {
+        r.rank
+            .filter(|rank| *rank <= RANK_DEPTH)
+            .map_or(0.0, |rank| 1.0 / to_f64(rank))
+    });
     let recall = per_query(|r| recall_at(&r.returned, &r.expected, RANK_DEPTH));
     let ndcg = per_query(|r| ndcg_at(&r.returned, &r.expected, RANK_DEPTH));
     let mean_of = |values: &[f64]| {
@@ -361,6 +378,23 @@ mod tests {
         assert_eq!(summary.hit_at_1, 0.25);
         assert_eq!(summary.hit_at_5, 0.5);
         assert!((summary.mrr - (1.0 + 1.0 / 3.0 + 1.0 / 6.0) / 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn mrr_counts_only_ranks_within_the_scored_depth() {
+        // With --top-k 100 a right answer can sit at rank 11; the README says MRR is 0 then.
+        let results = [result(Some(10), 1.0, None), result(Some(11), 1.0, None)];
+        let summary = summarize(&results);
+        assert!((summary.mrr - 0.05).abs() < 1e-12, "{}", summary.mrr);
+    }
+
+    #[test]
+    fn an_id_with_no_ascii_letters_or_digits_never_matches_anything() {
+        let foreign = [Some("日本語".to_owned())];
+        assert_eq!(rank_of(&foreign, &["東京".to_owned()]), None);
+        assert_eq!(rank_of(&foreign, &["日本語".to_owned()]), None);
+        assert_eq!(recall_at(&foreign, &["東京".to_owned()], 10), 0.0);
+        assert_eq!(ndcg_at(&foreign, &["東京".to_owned()], 10), 0.0);
     }
 
     #[test]

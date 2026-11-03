@@ -139,7 +139,13 @@ pub fn result_ids(output: &ToolOutput, top_k: usize) -> Result<Vec<Option<String
         .iter()
         .take(top_k)
         .map(|entry| ID_KEYS.iter().find_map(|key| entry.get(key)?.as_str()))
-        .filter(|id| id.is_none_or(|id| seen.insert(normalize(id))))
+        .filter(|id| {
+            id.is_none_or(|id| {
+                let key = normalize(id);
+                // Ids with no ASCII letters or digits all normalize to "": keep each of them.
+                key.is_empty() || seen.insert(key)
+            })
+        })
         .map(|id| id.map(str::to_owned))
         .collect())
 }
@@ -282,6 +288,15 @@ mod tests {
     fn keeps_only_the_first_position_of_a_repeated_id() {
         let body = json!({ "results": [{ "id": "A-1" }, { "id": "a1" }, { "id": "B" }] });
         assert_eq!(ids(&output(Some(body), ""), 10), some(&["A-1", "B"]));
+    }
+
+    #[test]
+    fn ids_without_ascii_letters_or_digits_are_not_taken_for_repeats_of_each_other() {
+        let body = json!({ "results": [{ "id": "日本" }, { "id": "東京" }, { "id": "B" }] });
+        assert_eq!(
+            ids(&output(Some(body), ""), 10),
+            some(&["日本", "東京", "B"])
+        );
     }
 
     #[test]
