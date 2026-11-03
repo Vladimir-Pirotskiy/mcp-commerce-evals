@@ -14,7 +14,9 @@ fn the_recorded_commit_is_the_one_checked_out() {
         eprintln!("skipped: git is not available or this is not a checkout");
         return;
     };
-    let recorded = option_env!("MCP_EVALS_GIT_COMMIT").expect("a build inside a git checkout");
+    let Some(recorded) = option_env!("MCP_EVALS_GIT_COMMIT") else {
+        panic!("git reports HEAD {head} but the build recorded no commit");
+    };
 
     assert_eq!(recorded.trim_end_matches("+dirty"), head);
 }
