@@ -87,8 +87,12 @@ content, and a JSON text block with the same data for clients that read only tex
 |---|---|---|
 | `search_products` | `query`, `brand`, `category`, `fits[]`, `in_stock_only`, `max_price_usd`, `limit` | Ranked search. Tolerates typos and synonyms, matches part numbers. Returns stock status, not quantity. |
 | `get_product` | `id` | Full detail: attributes, compatibility, units on the shelf, restock days. |
-| `check_availability` | `items[]` of `{id, quantity}` | Per item: available, partial, backorder, unavailable or unknown_part. Changes nothing. |
+| `check_availability` | `items[]` of `{id, quantity}` | Per part: available, partial, backorder, unavailable or unknown_part. A part sent on several lines is added up first, as `create_cart` does. Changes nothing. |
 | `create_cart` | `items[]` of `{id, quantity}` | Returns a fake `checkout_url`, the lines and the subtotal. The assistant never pays; the buyer opens the link. Idempotent: the same items give the same cart. |
+
+Money is sent twice: dollars for display (`price_usd`, `unit_price_usd`, `line_total_usd`,
+`subtotal_usd`) and whole cents (`price_cents`, `unit_price_cents`, `line_total_cents`,
+`subtotal_cents`). The cents are authoritative; do arithmetic on them.
 
 The descriptions are written for the assistant that reads them: when to call the tool, what the
 result does not contain, and what to do next. Errors come back as tool errors (`isError: true`)
@@ -96,7 +100,9 @@ with a message that says how to recover, for example "Copy ids from search_produ
 
 Limits: 120 requests per client per minute on `/mcp` (429 with `Retry-After`; change it with
 `--requests-per-minute`, which must be at least 1), at most 10,000 clients tracked (more share one
-budget until a window expires), `/health` is not limited. The rate limit runs before the `Host` and
+budget until a window expires), `/health` is not limited. The window is fixed, not sliding, so a client can spend its budget at
+the end of one window and again at the start of the next: up to twice the limit within a window's
+length. The rate limit runs before the `Host` and
 `Origin` checks, so a request refused for either still counts against its client. Inputs: a query
 is at most 200 characters and 20 words, `limit` is 1 to 25 and anything else is refused, `brand`,
 each `fits` entry and every part id are at most 100 characters, `fits` takes at most 10 non-empty
@@ -154,20 +160,26 @@ under `results`, `products`, `items` or `hits`, or that is neither structured co
 text, is an error for that query, not an empty result. Use `--search-tool` for a store whose tool
 has another name; each entry's id is read from `id`, `sku`, `part_number` or `product_id`.
 
-The process exits 0 on success, 1 when the run could not complete, 2 when any query errored and 3
-when a gate was not met: `--min-hit5 <f64>` and `--min-mrr <f64>` compare against the "all" row
+`--kind <kind>` (repeatable) runs only queries of those kinds; the report's `meta` records them.
+
+The process exits 0 on success, 1 when the run could not complete, 2 when any query errored (in
+the tool-level or the assistant-level run) and 3 when a gate was not met: `--min-hit5 <f64>` and `--min-mrr <f64>` compare against the "all" row
 and the failed gate is printed. The JSON report is written first, and `--out` refuses to replace an
 existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
 the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
 the server's `serverInfo` and negotiated protocol version, and for assistant runs the model,
-temperature (null when none was sent), `max_turns` and a hash of the system prompt. `--timeout-secs` (default 60) bounds every
-HTTP request, to the store and to the model API.
+temperature (null when none was sent), `max_turns` and a hash of the system prompt.
+`--timeout-secs` (default 60) bounds every HTTP request, to the store and to the model API. The MCP
+client reads JSON and event-stream replies, carries a session id when the server issues one,
+opens a new session once if the server answers 404 to it, and ends the session with a DELETE
+(a 405 is fine) when the run completes.
 
 **Assistant-level (optional, costs tokens).** `--assistant anthropic` gives a model the store's
 tools through the Anthropic Messages API and lets it work until it answers, at most `--max-turns`
-(default 8), with the API's default sampling unless `--temperature <0-1>` is given (it is sent only then, since
-some models reject it). The system prompt does not name a kind of store and asks the model
-to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
+(default 8). No `temperature` is sent unless `--temperature <0-1>` is given, because some models
+reject the parameter; the report records `null` or the value. A tool that returns only structured
+content reaches the model as that JSON. The system prompt does not name a kind of store and asks
+the model to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
 only when that committed id equals an expected id after normalising case and punctuation; whether
 the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`).
 Only a `stop_reason` of `end_turn` is a final answer: `max_tokens`, `refusal`, `pause_turn` or
@@ -185,12 +197,13 @@ export ANTHROPIC_API_KEY=...        # read from the environment only, never from
 cargo run --release -p mcp-commerce-evals -- --assistant anthropic --model claude-haiku-5-5
 ```
 
-I did not run this mode against the live API. Its loop is tested against a mock of the API (tool
-call, tool result, the committed answer, each stop reason, a 429 that is retried, a 401 whose
-message must not contain the key, a request timeout, token counts), but the request shape comes
-from the API documentation, not from a live call, and I have not checked that the API accepts the
-`$schema` field the store's input schemas carry. No assistant-level numbers are published here for
-that reason.
+The loop is tested against a mock of the API (tool call, tool result, the committed answer, each
+stop reason, a 429 that is retried, a 401 whose message must not contain the key, a request
+timeout, token counts, no `temperature` by default). A short live smoke run against
+`claude-haiku-5-5` found that the API answers HTTP 400 "`temperature` is deprecated for this
+model" when the parameter is sent, which is why it is now opt-in. I have not checked that the API
+accepts the `$schema` field the store's input schemas carry, and no assistant-level numbers are
+published here.
 
 The store itself was checked with a real MCP client on 2026-11-03: Claude Code (`claude -p`, Haiku,
 the store as its only server through `--mcp-config`) was asked for "an 11-speed chain that is in
@@ -250,7 +263,7 @@ call. Rankings are deterministic for a given seed; latency varies from run to ru
 
 ```sh
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings   # includes clippy::pedantic
 cargo test --workspace
 ```
 
