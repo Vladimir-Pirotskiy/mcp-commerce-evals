@@ -1,9 +1,9 @@
 //! The `meta` block of a report: what produced the numbers, so a rerun can be compared.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::assistant::{Plan, SYSTEM_PROMPT};
+use crate::assistant::{DEFAULT_MAX_TOKENS, Plan, SYSTEM_PROMPT};
 use crate::hash::sha256_hex;
 use crate::mcp::ServerHandshake;
 use crate::metrics::{BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED};
@@ -12,12 +12,16 @@ use crate::metrics::{BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED};
 const GIT_COMMIT: Option<&str> = option_env!("MCP_EVALS_GIT_COMMIT");
 
 /// Settings of the assistant-level run.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantMeta {
     /// Model that answered.
     pub model: String,
     /// Sampling temperature that was sent; null when none was.
     pub temperature: Option<f64>,
+    /// Cap on the length of each model reply, in tokens. Reports written before it was recorded
+    /// read as the 1024 that was then fixed.
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
     /// Most model turns per query.
     pub max_turns: u32,
     /// Runs per query.
@@ -26,13 +30,18 @@ pub struct AssistantMeta {
     pub system_prompt_sha256: String,
 }
 
+fn default_max_tokens() -> u32 {
+    DEFAULT_MAX_TOKENS
+}
+
 impl AssistantMeta {
     /// The settings for a run of `model` under `plan`.
     #[must_use]
-    pub fn new(model: &str, temperature: Option<f64>, plan: Plan) -> Self {
+    pub fn new(model: &str, temperature: Option<f64>, max_tokens: u32, plan: Plan) -> Self {
         Self {
             model: model.to_owned(),
             temperature,
+            max_tokens,
             max_turns: plan.max_turns,
             trials: plan.trials,
             system_prompt_sha256: sha256_hex(SYSTEM_PROMPT.as_bytes()),
@@ -137,7 +146,7 @@ mod tests {
         let meta = Meta::new(
             &settings,
             &handshake,
-            Some(AssistantMeta::new("m", None, Plan::once(8))),
+            Some(AssistantMeta::new("m", None, 512, Plan::once(8))),
         );
 
         assert_eq!(meta.crate_version, env!("CARGO_PKG_VERSION"));
@@ -150,8 +159,22 @@ mod tests {
         let assistant = meta.assistant.expect("assistant meta");
         assert_eq!(assistant.system_prompt_sha256.len(), 64);
         assert_eq!((assistant.temperature, assistant.max_turns), (None, 8));
+        assert_eq!(assistant.max_tokens, 512);
         assert_eq!(assistant.trials, 1);
         assert_eq!(meta.bootstrap_seed, BOOTSTRAP_SEED);
         assert_eq!(meta.bootstrap_resamples, 2000);
+    }
+
+    #[test]
+    fn assistant_meta_round_trips_and_an_old_file_without_max_tokens_reads_as_1024() {
+        let meta = AssistantMeta::new("m", Some(0.2), 300, Plan::once(4));
+        let text = serde_json::to_string(&meta).unwrap();
+        let back: AssistantMeta = serde_json::from_str(&text).unwrap();
+        assert_eq!((back.max_tokens, back.temperature), (300, Some(0.2)));
+
+        let old = r#"{"model":"m","temperature":null,"max_turns":8,"trials":3,
+                      "system_prompt_sha256":"abc"}"#;
+        let old: AssistantMeta = serde_json::from_str(old).unwrap();
+        assert_eq!(old.max_tokens, 1024);
     }
 }

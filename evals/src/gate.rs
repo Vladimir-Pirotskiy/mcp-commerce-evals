@@ -70,6 +70,29 @@ impl Gates {
     }
 }
 
+impl Gates {
+    /// One line per gate that was set, naming its threshold and the measured score, for the
+    /// success path (a failure prints its own line).
+    #[must_use]
+    pub fn passed_lines(&self, overall: &Summary, accuracy: Option<f64>) -> Vec<String> {
+        [
+            ("--min-hit5", self.min_hit5, Some(overall.hit_at_5)),
+            ("--min-mrr", self.min_mrr, Some(overall.mrr)),
+            ("--min-accuracy", self.min_accuracy, accuracy),
+        ]
+        .into_iter()
+        .filter_map(|(flag, required, actual)| {
+            Some(format!(
+                "Gate met: {} {:.4} is at least the required {:.4}",
+                flag.trim_start_matches("--min-"),
+                actual?,
+                required?
+            ))
+        })
+        .collect()
+    }
+}
+
 /// The exit code for a finished run: 0, or [`EXIT_QUERY_ERRORS`], or [`EXIT_GATE_FAILED`] when a
 /// gate failed (which wins, because it is the more specific verdict).
 #[must_use]

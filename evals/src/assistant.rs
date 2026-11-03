@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
@@ -33,7 +33,8 @@ const ANSWER_PREFIX: &str = "ANSWER:";
 /// The committed value that means the model found nothing suitable.
 const ANSWER_NONE: &str = "none";
 const API_VERSION: &str = "2023-06-01";
-const MAX_TOKENS: u32 = 1024;
+/// Reply-length cap sent with every request unless `--max-tokens` says otherwise.
+pub const DEFAULT_MAX_TOKENS: u32 = 1024;
 const MAX_ERROR_CHARS: usize = 200;
 /// Retries after the first attempt, for HTTP 429, 529 and 5xx, and for transport timeouts and
 /// failed connects.
@@ -76,6 +77,7 @@ pub struct Anthropic {
     key: ApiKey,
     model: String,
     temperature: Option<f64>,
+    max_tokens: u32,
     backoff_base: Duration,
 }
 
@@ -92,6 +94,7 @@ impl Anthropic {
             key,
             model: model.to_owned(),
             temperature: None,
+            max_tokens: DEFAULT_MAX_TOKENS,
             backoff_base: DEFAULT_BACKOFF_BASE,
         })
     }
@@ -100,6 +103,13 @@ impl Anthropic {
     #[must_use]
     pub fn with_temperature(mut self, temperature: Option<f64>) -> Self {
         self.temperature = temperature;
+        self
+    }
+
+    /// Caps every reply at `max_tokens` tokens; the default is [`DEFAULT_MAX_TOKENS`].
+    #[must_use]
+    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        self.max_tokens = max_tokens;
         self
     }
 
@@ -218,8 +228,43 @@ pub fn api_tools(mcp_tools: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+/// One tool call the model made: the tool and the arguments it sent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "ToolUseRepr")]
+pub struct ToolUse {
+    /// Tool name.
+    pub name: String,
+    /// The arguments object the model sent; null for a run recorded before arguments were kept.
+    pub arguments: Value,
+}
+
+/// How a [`ToolUse`] reads from a file: a bare tool name (results written before arguments were
+/// stored) or the full object.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ToolUseRepr {
+    Name(String),
+    Full {
+        name: String,
+        #[serde(default)]
+        arguments: Value,
+    },
+}
+
+impl From<ToolUseRepr> for ToolUse {
+    fn from(repr: ToolUseRepr) -> Self {
+        match repr {
+            ToolUseRepr::Name(name) => Self {
+                name,
+                arguments: Value::Null,
+            },
+            ToolUseRepr::Full { name, arguments } => Self { name, arguments },
+        }
+    }
+}
+
 /// The outcome of one query.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantResult {
     /// Query id.
     pub id: String,
@@ -243,8 +288,8 @@ pub struct AssistantResult {
     pub stop_reason: Option<String>,
     /// Tool calls the model made.
     pub tool_calls: u32,
-    /// Which tools, in order.
-    pub tools_used: Vec<String>,
+    /// Which tools, in order, with the arguments of each call.
+    pub tools_used: Vec<ToolUse>,
     /// Model turns taken.
     pub turns: u32,
     /// Input tokens over all turns.
@@ -335,7 +380,10 @@ async fn run_tools(mcp: &mut McpClient, calls: &[&Value], result: &mut Assistant
     for call in calls {
         let name = call["name"].as_str().unwrap_or_default();
         result.tool_calls += 1;
-        result.tools_used.push(name.to_owned());
+        result.tools_used.push(ToolUse {
+            name: name.to_owned(),
+            arguments: call["input"].clone(),
+        });
         let (text, is_error) = match mcp.call_tool(name, call["input"].clone()).await {
             Ok(output) => (tool_result_text(&output), output.is_error),
             Err(e) => (e.to_string(), true),
@@ -359,7 +407,7 @@ async fn converse(
     let mut messages = vec![json!({ "role": "user", "content": query.text })];
     for _ in 0..max_turns {
         let mut body = json!({
-            "model": api.model, "max_tokens": MAX_TOKENS,
+            "model": api.model, "max_tokens": api.max_tokens,
             "system": SYSTEM_PROMPT, "tools": tools, "messages": messages,
         });
         // Sent only when asked for: some current models reject the parameter outright.
@@ -711,6 +759,27 @@ mod tests {
         ));
         assert!(!names_expected("Get ALD-CH-1003 instead.", &expected));
         assert!(!names_expected("", &expected));
+    }
+
+    #[test]
+    fn tool_uses_round_trip_and_an_old_file_with_bare_tool_names_still_parses() {
+        let used = ToolUse {
+            name: "search_products".to_owned(),
+            arguments: json!({ "query": "chain", "limit": 5 }),
+        };
+        let back: ToolUse = serde_json::from_str(&serde_json::to_string(&used).unwrap()).unwrap();
+        assert_eq!(back, used);
+
+        let old = json!({
+            "id": "q", "kind": "k", "text": "t", "expected": [], "final_answer": "",
+            "committed": null, "correct": false, "mentions_expected": false, "answered": true,
+            "stop_reason": "end_turn", "tool_calls": 1, "tools_used": ["get_product"],
+            "turns": 1, "input_tokens": 1, "output_tokens": 1, "error": null,
+            "trial": 1, "models": []
+        });
+        let parsed: AssistantResult = serde_json::from_value(old).unwrap();
+        assert_eq!(parsed.tools_used[0].name, "get_product");
+        assert!(parsed.tools_used[0].arguments.is_null());
     }
 
     #[test]

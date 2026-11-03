@@ -74,8 +74,12 @@ struct Args {
     timeout_secs: u64,
     /// Sampling temperature (0 to 1) for the assistant-level run; sent only when given, because
     /// some models reject the parameter.
-    #[arg(long, value_parser = parse_temperature)]
+    #[arg(long, value_parser = parse_temperature, requires = "assistant")]
     temperature: Option<f64>,
+    /// Most tokens in each model reply of the assistant-level run.
+    #[arg(long, default_value_t = assistant::DEFAULT_MAX_TOKENS,
+          value_parser = clap::value_parser!(u32).range(1..), requires = "assistant")]
+    max_tokens: u32,
     /// Most model turns per query in the assistant-level run.
     #[arg(long, default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=50))]
     max_turns: u32,
@@ -113,8 +117,12 @@ fn anthropic_client(args: &Args, timeout: Duration) -> Result<Option<Anthropic>>
             // The override exists so the tests can point the binary at a mock API.
             let base_url = std::env::var("ANTHROPIC_BASE_URL")
                 .unwrap_or_else(|_| assistant::DEFAULT_BASE_URL.to_owned());
-            Anthropic::new(ApiKey::new(key)?, &args.model, &base_url, timeout)
-                .map(|api| Some(api.with_temperature(args.temperature)))
+            Anthropic::new(ApiKey::new(key)?, &args.model, &base_url, timeout).map(|api| {
+                Some(
+                    api.with_temperature(args.temperature)
+                        .with_max_tokens(args.max_tokens),
+                )
+            })
         }
         None => Ok(None),
     }
@@ -153,7 +161,7 @@ async fn run(args: Args) -> Result<u8> {
     };
     let assistant_meta = api
         .as_ref()
-        .map(|_| AssistantMeta::new(&args.model, args.temperature, plan));
+        .map(|_| AssistantMeta::new(&args.model, args.temperature, args.max_tokens, plan));
     let mut report = EvalReport {
         meta: Meta::new(&settings, mcp.handshake(), assistant_meta),
         store_url: args.url.clone(),
@@ -218,6 +226,11 @@ fn exit_status_of(report: &EvalReport, args: &Args) -> u8 {
     let failures = gates.failures(&report.tool_level.overall, accuracy);
     for failure in &failures {
         eprintln!("mcp-commerce-evals: {failure}");
+    }
+    if failures.is_empty() {
+        for line in gates.passed_lines(&report.tool_level.overall, accuracy) {
+            println!("{line}");
+        }
     }
     let query_errors = report.tool_level.error_count()
         + report

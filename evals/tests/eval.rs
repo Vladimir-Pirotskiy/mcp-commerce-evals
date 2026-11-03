@@ -301,7 +301,13 @@ async fn the_model_searches_through_the_store_and_commits_to_the_right_part() {
     assert_eq!(result.committed.as_deref(), Some("FER-CH-4296"));
     assert_eq!(result.stop_reason.as_deref(), Some("end_turn"));
     assert_eq!((result.tool_calls, result.turns), (1, 2));
-    assert_eq!(result.tools_used, ["search_products"]);
+    assert_eq!(result.tools_used.len(), 1);
+    assert_eq!(result.tools_used[0].name, "search_products");
+    assert!(
+        result.tools_used[0].arguments.is_object(),
+        "the arguments the model sent are recorded: {:?}",
+        result.tools_used[0]
+    );
     assert_eq!((result.input_tokens, result.output_tokens), (200, 40));
 
     let seen = mock.seen.lock().unwrap();
@@ -984,6 +990,73 @@ async fn a_requested_temperature_is_sent_and_recorded() {
 
     assert_eq!(report.temperature, Some(0.3));
     assert_eq!(mock.seen.lock().unwrap()[0].1["temperature"], 0.3);
+}
+
+#[tokio::test]
+async fn max_tokens_is_sent_and_defaults_to_1024() {
+    let store = spawn_store().await;
+    let (api_server, mock) = spawn_mock(vec![final_answer("ANSWER: none"); 2]).await;
+    let mut mcp = connect(&store.base).await;
+    let queries = [query("a", "one", "A-1")];
+    let custom = client(&api_server, "k").with_max_tokens(300);
+    assistant::run(&custom, &mut mcp, &queries, Plan::once(2), |_| Ok(()))
+        .await
+        .unwrap();
+    let plain = client(&api_server, "k");
+    assistant::run(&plain, &mut mcp, &queries, Plan::once(2), |_| Ok(()))
+        .await
+        .unwrap();
+    let seen = mock.seen.lock().unwrap();
+    assert_eq!(seen[0].1["max_tokens"], 300);
+    assert_eq!(seen[1].1["max_tokens"], 1024);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_records_max_tokens_in_meta_and_refuses_model_settings_without_an_assistant() {
+    let store = spawn_store().await;
+    let (api_server, mock) = spawn_mock(vec![final_answer("ANSWER: none"); 4]).await;
+    let (code, stderr, report) = run_cli_assistant(
+        &store,
+        &api_server,
+        &["--max-tokens", "256", "--temperature", "0.5"],
+        "max-tokens",
+    )
+    .await;
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(report["meta"]["assistant"]["max_tokens"], 256);
+    assert_eq!(report["meta"]["assistant"]["temperature"], 0.5);
+    assert_eq!(mock.seen.lock().unwrap()[0].1["max_tokens"], 256);
+
+    for flag in [["--temperature", "0.5"], ["--max-tokens", "256"]] {
+        let (code, stderr) = run_cli(&store.base, &flag, &scratch_file("needs-assistant")).await;
+        assert_eq!(code, 2, "{flag:?}: {stderr}");
+        assert!(stderr.contains("--assistant"), "{flag:?}: {stderr}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_prints_the_gate_thresholds_when_they_are_met() {
+    let store = spawn_store().await;
+    let out = scratch_file("gate-lines");
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mcp-commerce-evals"));
+    command
+        .args([
+            "--url",
+            &format!("{}/mcp", store.base),
+            "--queries",
+            QUERIES,
+            "--out",
+        ])
+        .arg(&out)
+        .args(["--min-hit5", "0.5", "--min-mrr", "0.5"]);
+    let output = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .unwrap()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Gate met: hit5"), "{stdout}");
+    assert!(stdout.contains("required 0.5000"), "{stdout}");
+    assert!(stdout.contains("Gate met: mrr"), "{stdout}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
