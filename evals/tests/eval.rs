@@ -1234,7 +1234,7 @@ async fn cli_trials_run_each_query_that_many_times_and_record_the_curve() {
     assert_eq!(assistant["pass_at_k"].as_array().unwrap().len(), 2);
     assert_eq!(assistant["pass_at_k"][1]["value"], 1.0);
     assert_eq!(report["meta"]["assistant"]["trials"], 2);
-    assert_eq!(report["meta"]["bootstrap_seed"].as_u64().is_some(), true);
+    assert!(report["meta"]["bootstrap_seed"].is_u64());
     assert!(report["tool_level"]["overall"]["mrr_ci"]["low"].is_number());
     assert_eq!(assistant["response_models"][0], "test-model-resolved-2026");
 }
