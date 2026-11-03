@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, "release/**"]
   pull_request:
+  schedule:
+    # Weekly, so a new RustSec advisory or a toolchain change shows up without a push.
+    - cron: "23 5 * * 1"
 
 permissions:
   contents: read
@@ -39,6 +42,18 @@ jobs:
         # Pinned so a new release cannot change what the job checks.
         run: cargo install --locked cargo-deny --version 0.20.2
       - run: cargo deny --locked check licenses bans sources
+
+  advisories:
+    # Its own job, because the result depends on the RustSec database, not on the diff: an
+    # advisory published today must not turn an unrelated pull request red. On a push or pull
+    # request a finding is reported but does not fail the run; the weekly scheduled run does
+    # fail on it, so it is seen.
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ github.event_name != 'schedule' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install cargo-deny
+        run: cargo install --locked cargo-deny --version 0.20.2
       - name: Check advisories
         # Needs the network: it fetches the RustSec database.
         run: cargo deny --locked check advisories
