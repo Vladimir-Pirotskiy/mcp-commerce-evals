@@ -1402,3 +1402,31 @@ async fn cli_min_accuracy_without_an_assistant_run_is_refused() {
     assert_eq!(code, 2, "{stderr}");
     assert!(stderr.contains("--assistant"), "{stderr}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_without_queries_uses_the_built_in_file_from_any_directory() {
+    let store = spawn_store().await;
+    let dir = std::env::temp_dir().join(format!("mcp-evals-{}-built-in", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create dir");
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mcp-commerce-evals"));
+    command
+        .current_dir(&dir)
+        .args(["--url", &format!("{}/mcp", store.base)])
+        .args(["--out", "report.json", "--force"]);
+    let output = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .expect("join")
+        .expect("run the binary");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    let report: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("report.json")).unwrap()).unwrap();
+    assert_eq!(report["queries_file"], "built-in evals/queries.json");
+    let shipped = std::fs::read(QUERIES).expect("read the shipped queries");
+    assert_eq!(
+        report["meta"]["queries_sha256"],
+        mcp_commerce_evals::hash::sha256_hex(&shipped),
+        "the hash is of the bytes the run used"
+    );
+}

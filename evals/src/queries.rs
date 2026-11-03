@@ -1,7 +1,7 @@
 //! The queries file: what buyers ask and which parts count as a right answer.
 
 use std::collections::{BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -30,21 +30,10 @@ pub struct Query {
 /// right behaviour is to return nothing relevant (tool level) or to answer `none` (assistant).
 pub const NO_MATCH_KIND: &str = "no_match";
 
-/// Where the shipped queries file is, relative to the repository root.
-const SHIPPED_QUERIES: &str = "evals/queries.json";
-/// Where the shipped queries file was when this binary was built from source.
-const BUILD_TIME_QUERIES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/queries.json");
-
-/// The queries file to use when none is given: the shipped one under the current directory,
-/// else the copy in the source tree this binary was built from.
-#[must_use]
-pub fn default_path() -> PathBuf {
-    prefer_existing(Path::new(SHIPPED_QUERIES), Path::new(BUILD_TIME_QUERIES))
-}
-
-fn prefer_existing(first: &Path, fallback: &Path) -> PathBuf {
-    if first.exists() { first } else { fallback }.to_path_buf()
-}
+/// The queries file shipped with this tool, compiled in so a binary works outside a checkout.
+pub const BUILT_IN: &str = include_str!("../queries.json");
+/// What the report's `queries_file` says when the built-in queries were used.
+pub const BUILT_IN_LABEL: &str = "built-in evals/queries.json";
 
 /// Reads a queries file as text.
 ///
@@ -137,12 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn the_default_path_falls_back_to_the_build_time_copy() {
-        let missing = Path::new("/no/such/queries.json");
-        let present = Path::new(BUILD_TIME_QUERIES);
-        assert_eq!(prefer_existing(present, missing), present);
-        assert_eq!(prefer_existing(missing, present), present);
-        assert!(default_path().exists());
+    fn the_built_in_queries_parse() {
+        assert!(!parse(BUILT_IN).unwrap().is_empty());
     }
 
     #[test]

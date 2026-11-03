@@ -36,8 +36,8 @@ struct Args {
     /// MCP endpoint of the store (Streamable HTTP).
     #[arg(long, default_value = "http://127.0.0.1:8787/mcp")]
     url: String,
-    /// Queries file: a JSON array of {id, kind, text, expected, search?}. Defaults to
-    /// evals/queries.json under the current directory, else the copy in the source tree.
+    /// Queries file: a JSON array of {id, kind, text, expected, search?}. Defaults to the
+    /// copy of evals/queries.json compiled into the binary.
     #[arg(long)]
     queries: Option<PathBuf>,
     /// Where to write the JSON report.
@@ -156,8 +156,13 @@ async fn run(args: Args) -> Result<u8> {
     }
     refuse_to_overwrite(&args.out, args.force)?;
     let timeout = Duration::from_secs(args.timeout_secs);
-    let queries_path = args.queries.clone().unwrap_or_else(queries::default_path);
-    let raw_queries = queries::read_file(&queries_path)?;
+    let (raw_queries, queries_label) = match &args.queries {
+        Some(path) => (queries::read_file(path)?, path.display().to_string()),
+        None => (
+            queries::BUILT_IN.to_owned(),
+            queries::BUILT_IN_LABEL.to_owned(),
+        ),
+    };
     let queries = queries::select_kinds(queries::parse(&raw_queries)?, &args.kinds)?;
     let api = anthropic_client(&args, timeout)?;
     let mut mcp = McpClient::connect(&args.url, timeout).await?;
@@ -191,7 +196,7 @@ async fn run(args: Args) -> Result<u8> {
     let mut report = EvalReport {
         meta: Meta::new(&settings, mcp.handshake(), assistant_meta),
         store_url: args.url.clone(),
-        queries_file: queries_path.display().to_string(),
+        queries_file: queries_label,
         unix_time: 0,
         complete: false,
         tool_level,
