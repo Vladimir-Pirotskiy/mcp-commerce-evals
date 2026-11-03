@@ -1,5 +1,7 @@
 # mcp-commerce-evals
 
+[![ci](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml)
+
 Evals for AI shopping assistants over MCP, with a reference store to run them against.
 
 An assistant that shops for a buyer does two things that can go wrong: it finds the wrong part, or
