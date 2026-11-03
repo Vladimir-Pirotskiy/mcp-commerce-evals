@@ -836,6 +836,51 @@ async fn cli_refuses_to_overwrite_a_report_unless_forced() {
 }
 
 #[tokio::test]
+async fn a_query_whose_ranking_changes_between_repeats_is_flagged() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let (server, _) = spawn_scripted(move |_, rpc, body, _| match rpc {
+        Some("initialize") => rpc_ok(&body["id"], &initialized(), None),
+        Some("tools/call") => {
+            // The stable query ("steady") always gets A; any other gets a new id every call.
+            let id = if body["params"]["arguments"]["query"] == "steady" {
+                "A".to_owned()
+            } else {
+                format!("ID-{}", counter.fetch_add(1, Ordering::SeqCst))
+            };
+            rpc_ok(
+                &body["id"],
+                &structured(&json!({ "results": [{ "id": id }] })),
+                None,
+            )
+        }
+        _ => StatusCode::ACCEPTED.into_response(),
+    })
+    .await;
+    let mut mcp = connect(&server.base).await;
+    let queries = [query("a", "steady", "A"), query("b", "shifting", "A")];
+    let repeated = Options {
+        repeat: 3,
+        ..options()
+    };
+
+    let report = tool_level::run(&mut mcp, &queries, &repeated).await;
+
+    assert!(!report.queries[0].nondeterministic);
+    assert!(report.queries[1].nondeterministic);
+    assert_eq!(report.nondeterministic_queries, 1);
+    assert!(
+        mcp_commerce_evals::report::tool_level_markdown(&report)
+            .contains("1 queries returned different results")
+    );
+    let single = tool_level::run(&mut mcp, &queries, &options()).await;
+    assert_eq!(
+        single.nondeterministic_queries, 0,
+        "one call cannot disagree"
+    );
+}
+
+#[tokio::test]
 async fn repeat_times_each_query_that_many_times_after_one_untimed_warm_up() {
     let body = structured(&json!({ "results": [{ "id": "WANTED" }] }));
     let (server, mock) = spawn_mock_mcp(body).await;

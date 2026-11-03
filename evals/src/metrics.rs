@@ -376,6 +376,7 @@ mod tests {
                 Vec::new()
             },
             error: error.map(str::to_owned),
+            nondeterministic: false,
         }
     }
 

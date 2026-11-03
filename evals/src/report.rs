@@ -108,6 +108,14 @@ pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
             no_match.n, no_match.empty_replies, no_match.mean_results_returned, no_match.errors
         );
     }
+    if report.nondeterministic_queries > 0 {
+        let _ = write!(
+            out,
+            "\n**{} queries returned different results across --repeat calls**; the scores use \
+             the first call.\n",
+            report.nondeterministic_queries
+        );
+    }
     let misses: Vec<_> = report
         .queries
         .iter()

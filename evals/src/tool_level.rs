@@ -51,6 +51,10 @@ pub struct QueryResult {
     pub latencies_ms: Vec<f64>,
     /// Why the call failed, when it did.
     pub error: Option<String>,
+    /// True when `--repeat` made several calls and their ranked ids were not all the same, so
+    /// `returned` (the first call) is one of several answers the store gives.
+    #[serde(default)]
+    pub nondeterministic: bool,
 }
 
 /// What the search tool did with the queries it has no answer for. Descriptive only: whether a
@@ -80,6 +84,9 @@ pub struct ToolLevelReport {
     pub by_kind: BTreeMap<String, Summary>,
     /// The abstention queries, which have no right answer to rank; absent when there are none.
     pub no_match: Option<NoMatchSummary>,
+    /// How many queries (including `no_match`) were answered differently across `--repeat`
+    /// calls; always 0 with one call.
+    pub nondeterministic_queries: usize,
     /// One entry per query.
     pub queries: Vec<QueryResult>,
 }
@@ -182,6 +189,7 @@ async fn search_ids(
 /// failed call makes the whole query an error, so a flaky store cannot score well.
 async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> QueryResult {
     let mut returned = Vec::new();
+    let mut nondeterministic = false;
     let mut latencies_ms = Vec::with_capacity(options.repeat);
     let mut error = None;
     for call in 0..options.repeat.max(1) {
@@ -191,12 +199,15 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
                 latencies_ms.push(latency_ms);
                 if call == 0 {
                     returned = ids;
+                } else if ids != returned {
+                    nondeterministic = true;
                 }
             }
             Err(e) => {
                 error = Some(e.to_string());
                 returned.clear();
                 latencies_ms.clear();
+                nondeterministic = false;
                 break;
             }
         }
@@ -210,6 +221,7 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
         returned,
         latencies_ms,
         error,
+        nondeterministic,
     }
 }
 
@@ -243,6 +255,7 @@ pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> T
             .map(|(kind, rs)| ((*kind).to_owned(), summarize(rs)))
             .collect(),
         no_match: no_match_summary(&no_match),
+        nondeterministic_queries: results.iter().filter(|r| r.nondeterministic).count(),
         queries: results,
     }
 }
