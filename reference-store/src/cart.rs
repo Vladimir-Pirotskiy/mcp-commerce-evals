@@ -348,9 +348,10 @@ mod tests {
 
     #[test]
     fn the_dearest_possible_cart_is_exact_and_fits() {
+        let demo = demo_catalog();
         let parts: Vec<Part> = (0..MAX_LINES)
             .map(|i| {
-                let mut part = demo_catalog().parts()[i].clone();
+                let mut part = demo.parts()[i].clone();
                 part.id = format!("TST-AA-{i:04}");
                 part.price_usd = f64::from(catalog::MAX_PRICE_CENTS) / 100.0;
                 part.stock = StockStatus::InStock;
