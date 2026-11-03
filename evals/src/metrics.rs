@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn mrr_counts_only_ranks_within_the_scored_depth() {
-        // With --top-k 100 a right answer can sit at rank 11; the README says MRR is 0 then.
+        // With --top-k 100 a right answer can sit at rank 11; docs/evals.md says MRR is 0 then.
         let results = [result(Some(10), 1.0, None), result(Some(11), 1.0, None)];
         let summary = summarize(&results);
         assert!((summary.mrr - 0.05).abs() < 1e-12, "{}", summary.mrr);

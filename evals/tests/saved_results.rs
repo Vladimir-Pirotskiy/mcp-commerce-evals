@@ -1,5 +1,5 @@
 //! The committed `results/*.json` files must still parse and render with the current report
-//! code, and the tables in the README must be what that code renders from them.
+//! code, and the tables in `docs/results.md` must be what that code renders from them.
 
 use std::path::{Path, PathBuf};
 
@@ -70,11 +70,11 @@ fn a_file_from_before_trials_and_models_were_recorded_still_renders() {
     assert!(text.contains("Model: m"), "{text}");
 }
 
-/// Every table row that the current code renders from a committed file is in the README, so the
-/// README cannot drift from the files (or from the report code) unnoticed.
+/// Every table row that the current code renders from a committed file is in `docs/results.md`,
+/// so the page cannot drift from the files (or from the report code) unnoticed.
 #[test]
-fn the_readme_tables_are_what_the_current_code_renders_from_the_results() {
-    let readme = std::fs::read_to_string(root().join("README.md")).expect("README");
+fn the_results_page_tables_are_what_the_current_code_renders_from_the_results() {
+    let page = std::fs::read_to_string(root().join("docs/results.md")).expect("docs/results.md");
     for file in results_files() {
         let text = rendered(&file);
         let name = file
@@ -93,8 +93,8 @@ fn the_readme_tables_are_what_the_current_code_renders_from_the_results() {
             .unwrap_or_else(|| panic!("{name}: no table starting {wanted:?}"));
         for row in table {
             assert!(
-                readme.lines().any(|line| line == row),
-                "{name}: this row is not in README.md (run `mcp-commerce-evals render`):\n{row}"
+                page.lines().any(|line| line == row),
+                "{name}: this row is not in docs/results.md (run `mcp-commerce-evals render`):\n{row}"
             );
         }
     }
