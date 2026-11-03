@@ -49,6 +49,10 @@ pub struct McpClient {
     protocol_header: &'static str,
 }
 
+/// Most `tools/list` pages followed before the client gives up on a server that never stops
+/// paginating.
+pub const MAX_TOOL_PAGES: usize = 20;
+
 impl McpClient {
     /// Opens a session: `initialize` followed by `notifications/initialized`. Every request,
     /// including the ones made later, gives up after `timeout`.
@@ -122,14 +126,30 @@ impl McpClient {
         &self.handshake
     }
 
-    /// The server's tool definitions, as MCP sends them (`name`, `description`, `inputSchema`).
+    /// The server's tool definitions, as MCP sends them (`name`, `description`, `inputSchema`),
+    /// following `nextCursor` through every page, up to [`MAX_TOOL_PAGES`].
     ///
     /// # Errors
     ///
-    /// Fails when the request or the JSON-RPC reply fails.
+    /// Fails when a request or the JSON-RPC reply fails, or when the server still offers a next
+    /// page after [`MAX_TOOL_PAGES`] pages.
     pub async fn list_tools(&mut self) -> Result<Vec<Value>> {
-        let result = self.request("tools/list", json!({})).await?;
-        Ok(result["tools"].as_array().cloned().unwrap_or_default())
+        let mut tools = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..MAX_TOOL_PAGES {
+            let params = cursor
+                .as_ref()
+                .map_or_else(|| json!({}), |cursor| json!({ "cursor": cursor }));
+            let result = self.request("tools/list", params).await?;
+            tools.extend(result["tools"].as_array().cloned().unwrap_or_default());
+            match result["nextCursor"].as_str().filter(|c| !c.is_empty()) {
+                Some(next) => cursor = Some(next.to_owned()),
+                None => return Ok(tools),
+            }
+        }
+        Err(Error::Protocol(format!(
+            "tools/list still had a next page after {MAX_TOOL_PAGES} pages; giving up"
+        )))
     }
 
     /// Calls a tool and flattens the result.

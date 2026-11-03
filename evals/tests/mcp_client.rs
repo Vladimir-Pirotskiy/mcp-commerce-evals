@@ -273,3 +273,55 @@ async fn a_server_ping_seen_in_the_stream_is_answered_with_an_empty_result() {
     assert_eq!(pong.body["result"], json!({}));
     assert!(pong.body.get("method").is_none());
 }
+
+#[tokio::test]
+async fn list_tools_follows_next_cursor_to_the_last_page() {
+    let server = spawn_raw(|body| match body["method"].as_str() {
+        Some("initialize") => Reply::Json(rpc(
+            &body["id"],
+            &json!({ "protocolVersion": "2025-06-18", "serverInfo": { "name": "raw" } }),
+        )),
+        Some("tools/list") => {
+            let result = match body["params"]["cursor"].as_str() {
+                None => json!({ "tools": [{ "name": "a" }], "nextCursor": "c1" }),
+                Some("c1") => json!({ "tools": [{ "name": "b" }], "nextCursor": "c2" }),
+                Some(_) => json!({ "tools": [{ "name": "c" }] }),
+            };
+            Reply::Json(rpc(&body["id"], &result))
+        }
+        _ => Reply::Accepted,
+    })
+    .await;
+    let mut mcp = McpClient::connect(&server.url(), TIMEOUT).await.unwrap();
+
+    let tools = mcp.list_tools().await.unwrap();
+
+    let names: Vec<_> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+    assert_eq!(names, ["a", "b", "c"]);
+    assert_eq!(server.methods("tools/list").len(), 3);
+}
+
+#[tokio::test]
+async fn list_tools_gives_up_on_a_server_that_never_stops_paginating() {
+    let server = spawn_raw(|body| match body["method"].as_str() {
+        Some("initialize") => Reply::Json(rpc(
+            &body["id"],
+            &json!({ "protocolVersion": "2025-06-18", "serverInfo": { "name": "raw" } }),
+        )),
+        Some("tools/list") => Reply::Json(rpc(
+            &body["id"],
+            &json!({ "tools": [{ "name": "a" }], "nextCursor": "again" }),
+        )),
+        _ => Reply::Accepted,
+    })
+    .await;
+    let mut mcp = McpClient::connect(&server.url(), TIMEOUT).await.unwrap();
+
+    let error = mcp.list_tools().await.unwrap_err().to_string();
+
+    assert!(error.contains("next page"), "{error}");
+    assert_eq!(
+        server.methods("tools/list").len(),
+        mcp_commerce_evals::mcp::MAX_TOOL_PAGES
+    );
+}
