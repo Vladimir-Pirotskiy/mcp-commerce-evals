@@ -7,9 +7,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use axum::body::Bytes;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use axum::routing::post;
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{any, post};
 use axum::{Json, Router};
 use catalog::demo_catalog;
 use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey, api_tools};
@@ -750,4 +752,173 @@ async fn cli_exits_2_when_every_assistant_query_fails_with_an_api_error() {
             > 0
     );
     assert!(report["assistant_level"]["temperature"].is_null());
+}
+
+/// What the scripted server saw of one request: HTTP method, JSON-RPC method (if any) and the
+/// session id the client sent.
+type Seen = (String, Option<String>, Option<String>);
+
+type ScriptedReply =
+    Box<dyn Fn(&Method, Option<&str>, &Value, Option<&str>) -> Response + Send + Sync>;
+
+/// A server whose replies come from a closure, and which records every request.
+struct Scripted {
+    reply: ScriptedReply,
+    seen: Mutex<Vec<Seen>>,
+}
+
+async fn scripted_rpc(
+    State(server): State<Arc<Scripted>>,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let session = headers
+        .get("mcp-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    let json: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let rpc = json["method"].as_str().map(str::to_owned);
+    server
+        .seen
+        .lock()
+        .expect("lock")
+        .push((method.to_string(), rpc.clone(), session.clone()));
+    (server.reply)(&method, rpc.as_deref(), &json, session.as_deref())
+}
+
+async fn spawn_scripted(
+    reply: impl Fn(&Method, Option<&str>, &Value, Option<&str>) -> Response + Send + Sync + 'static,
+) -> (Server, Arc<Scripted>) {
+    let server = Arc::new(Scripted {
+        reply: Box::new(reply),
+        seen: Mutex::new(Vec::new()),
+    });
+    let router = Router::new()
+        .route("/mcp", any(scripted_rpc))
+        .with_state(server.clone());
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
+    let base = format!("http://{}", listener.local_addr().expect("local address"));
+    let task = tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    (Server { base, task }, server)
+}
+
+fn rpc_ok(id: &Value, result: &Value, session: Option<&str>) -> Response {
+    let mut response =
+        Json(json!({ "jsonrpc": "2.0", "id": id, "result": result })).into_response();
+    if let Some(session) = session {
+        response.headers_mut().insert(
+            "mcp-session-id",
+            HeaderValue::from_str(session).expect("header"),
+        );
+    }
+    response
+}
+
+fn sessions_sent(server: &Scripted, rpc: &str) -> Vec<Option<String>> {
+    let seen = server.seen.lock().expect("lock");
+    seen.iter()
+        .filter(|(_, m, _)| m.as_deref() == Some(rpc))
+        .map(|(_, _, s)| s.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_session_id_that_is_not_text_keeps_the_previous_one() {
+    let (server, scripted) = spawn_scripted(|_, rpc, body, _| match rpc {
+        Some("initialize") => rpc_ok(&body["id"], &json!({}), Some("s1")),
+        Some("tools/list") => {
+            let mut response = rpc_ok(&body["id"], &json!({ "tools": [] }), None);
+            response.headers_mut().insert(
+                "mcp-session-id",
+                HeaderValue::from_bytes(&[0xff, 0xfe]).expect("header"),
+            );
+            response
+        }
+        Some("tools/call") => rpc_ok(&body["id"], &json!({ "content": [] }), None),
+        _ => StatusCode::ACCEPTED.into_response(),
+    })
+    .await;
+    let mut mcp = connect(&server.base).await;
+
+    mcp.list_tools().await.unwrap();
+    mcp.call_tool("t", json!({})).await.unwrap();
+
+    assert_eq!(
+        sessions_sent(&scripted, "tools/call"),
+        [Some("s1".to_owned())]
+    );
+}
+
+#[tokio::test]
+async fn a_forgotten_session_is_reopened_once_and_the_request_retried() {
+    let (server, scripted) = spawn_scripted(|_, rpc, body, session| match (rpc, session) {
+        (Some("initialize"), _) => {
+            let fresh = if body["id"] == 1 { "old" } else { "new" };
+            rpc_ok(&body["id"], &json!({}), Some(fresh))
+        }
+        (Some("tools/list"), Some("old")) => StatusCode::NOT_FOUND.into_response(),
+        (Some("tools/list"), Some("new")) => {
+            rpc_ok(&body["id"], &json!({ "tools": [{ "name": "t" }] }), None)
+        }
+        _ => StatusCode::ACCEPTED.into_response(),
+    })
+    .await;
+    let mut mcp = connect(&server.base).await;
+
+    let tools = mcp.list_tools().await.unwrap();
+
+    assert_eq!(tools.len(), 1);
+    assert_eq!(
+        sessions_sent(&scripted, "tools/list"),
+        [Some("old".to_owned()), Some("new".to_owned())]
+    );
+    assert_eq!(sessions_sent(&scripted, "initialize").len(), 2);
+}
+
+#[tokio::test]
+async fn closing_deletes_the_session_and_tolerates_a_405() {
+    for refuse in [false, true] {
+        let (server, scripted) = spawn_scripted(move |method, rpc, body, _| {
+            if method == Method::DELETE {
+                return if refuse {
+                    StatusCode::METHOD_NOT_ALLOWED
+                } else {
+                    StatusCode::OK
+                }
+                .into_response();
+            }
+            match rpc {
+                Some("initialize") => rpc_ok(&body["id"], &json!({}), Some("s9")),
+                _ => StatusCode::ACCEPTED.into_response(),
+            }
+        })
+        .await;
+        let mcp = connect(&server.base).await;
+
+        mcp.close().await;
+
+        let seen = scripted.seen.lock().unwrap();
+        let last = seen.last().unwrap();
+        assert_eq!((last.0.as_str(), last.2.as_deref()), ("DELETE", Some("s9")));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_runs_only_the_requested_kinds() {
+    let store = spawn_store().await;
+    let out = scratch_file("kinds");
+
+    let (code, stderr) = run_cli(&store.base, &["--kind", "typo", "--kind", "synonym"], &out).await;
+
+    assert_eq!(code, 0, "{stderr}");
+    let report: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(report["tool_level"]["overall"]["n"], 12);
+    assert_eq!(report["meta"]["kinds"], json!(["typo", "synonym"]));
+
+    let (code, stderr) = run_cli(&store.base, &["--kind", "nope", "--force"], &out).await;
+    assert_eq!(code, 1);
+    assert!(stderr.contains("no query has kind"), "{stderr}");
 }

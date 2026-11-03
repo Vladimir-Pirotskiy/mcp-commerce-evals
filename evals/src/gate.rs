@@ -103,7 +103,7 @@ mod tests {
         Summary {
             hit_at_5,
             mrr,
-            ..summarize(&[])
+            ..summarize::<crate::tool_level::QueryResult>(&[])
         }
     }
 

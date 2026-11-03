@@ -178,24 +178,18 @@ pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> T
     for query in queries {
         results.push(run_one(mcp, query, options).await);
     }
-    let mut kinds: BTreeMap<String, Vec<QueryResult>> = BTreeMap::new();
+    let mut kinds: BTreeMap<&str, Vec<&QueryResult>> = BTreeMap::new();
     for result in &results {
-        kinds
-            .entry(result.kind.clone())
-            .or_default()
-            .push(result.clone());
+        kinds.entry(result.kind.as_str()).or_default().push(result);
     }
-    let without_filter: Vec<QueryResult> = results
-        .iter()
-        .filter(|r| r.kind != FILTER_KIND)
-        .cloned()
-        .collect();
+    let without_filter: Vec<&QueryResult> =
+        results.iter().filter(|r| r.kind != FILTER_KIND).collect();
     ToolLevelReport {
-        overall: summarize(&results),
+        overall: summarize(&results.iter().collect::<Vec<_>>()),
         overall_without_filter: summarize(&without_filter),
         by_kind: kinds
             .iter()
-            .map(|(kind, rs)| (kind.clone(), summarize(rs)))
+            .map(|(kind, rs)| ((*kind).to_owned(), summarize(rs)))
             .collect(),
         queries: results,
     }

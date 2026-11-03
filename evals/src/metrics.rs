@@ -1,6 +1,7 @@
 //! Retrieval metrics: rank of the first right answer, hit@k with Wilson intervals, MRR,
 //! recall@k, nDCG@k and latency percentiles.
 
+use std::borrow::Borrow;
 use std::collections::HashSet;
 
 use serde::Serialize;
@@ -174,8 +175,9 @@ fn discount(position: usize) -> f64 {
     1.0 / (to_f64(position) + 2.0).log2()
 }
 
-/// Scores a set of query results.
-pub fn summarize(results: &[QueryResult]) -> Summary {
+/// Scores a set of query results, owned or borrowed.
+pub fn summarize<R: Borrow<QueryResult>>(results: &[R]) -> Summary {
+    let results: Vec<&QueryResult> = results.iter().map(Borrow::borrow).collect();
     let n = results.len();
     let at = |k: usize| {
         results
@@ -193,7 +195,7 @@ pub fn summarize(results: &[QueryResult]) -> Summary {
         if n == 0 {
             0.0
         } else {
-            results.iter().map(score).sum::<f64>() / to_f64(n)
+            results.iter().map(|r| score(r)).sum::<f64>() / to_f64(n)
         }
     };
     let mut latencies: Vec<f64> = results
@@ -287,7 +289,7 @@ mod tests {
         assert_eq!(summary.latency_p50_ms, 10.0);
         assert_eq!(summary.latency_p95_ms, 19.0);
         assert_eq!(summary.latency_mean_ms, 10.5);
-        assert_eq!(summarize(&[]).mrr, 0.0);
+        assert_eq!(summarize::<QueryResult>(&[]).mrr, 0.0);
     }
 
     fn ids(list: &[&str]) -> Vec<Option<String>> {

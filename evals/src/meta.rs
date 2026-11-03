@@ -53,6 +53,8 @@ pub struct Meta {
     pub search_tool: String,
     /// Request timeout in seconds.
     pub timeout_secs: u64,
+    /// Query kinds that were run; empty means every kind in the file.
+    pub kinds: Vec<String>,
     /// The server's `serverInfo` from `initialize`.
     pub server_info: Value,
     /// The protocol revision the server negotiated.
@@ -74,6 +76,8 @@ pub struct RunSettings<'a> {
     pub search_tool: &'a str,
     /// Request timeout in seconds.
     pub timeout_secs: u64,
+    /// Query kinds that were run; empty means every kind in the file.
+    pub kinds: &'a [String],
 }
 
 impl Meta {
@@ -92,6 +96,7 @@ impl Meta {
             repeat: settings.repeat,
             search_tool: settings.search_tool.to_owned(),
             timeout_secs: settings.timeout_secs,
+            kinds: settings.kinds.to_vec(),
             server_info: handshake.server_info.clone(),
             protocol_version: handshake.protocol_version.clone(),
             assistant,
@@ -116,6 +121,7 @@ mod tests {
             repeat: 3,
             search_tool: "search_products",
             timeout_secs: 60,
+            kinds: &[],
         };
 
         let meta = Meta::new(

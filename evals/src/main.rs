@@ -55,6 +55,9 @@ struct Args {
     /// Exit with status 3 when MRR over all queries is below this (0 to 1).
     #[arg(long, value_parser = gate::parse_threshold)]
     min_mrr: Option<f64>,
+    /// Run only queries of this kind (repeatable); all kinds when omitted.
+    #[arg(long = "kind")]
+    kinds: Vec<String>,
     /// Replace the report file if it already exists.
     #[arg(long)]
     force: bool,
@@ -113,7 +116,7 @@ async fn run(args: Args) -> Result<u8> {
     let timeout = Duration::from_secs(args.timeout_secs);
     let queries_path = args.queries.clone().unwrap_or_else(queries::default_path);
     let raw_queries = queries::read_file(&queries_path)?;
-    let queries = queries::parse(&raw_queries)?;
+    let queries = queries::select_kinds(queries::parse(&raw_queries)?, &args.kinds)?;
     let api = anthropic_client(&args, timeout)?;
     let mut mcp = McpClient::connect(&args.url, timeout).await?;
     let repeat = usize::try_from(args.repeat).unwrap_or(usize::MAX);
@@ -132,6 +135,7 @@ async fn run(args: Args) -> Result<u8> {
         repeat,
         search_tool: &args.search_tool,
         timeout_secs: args.timeout_secs,
+        kinds: &args.kinds,
     };
     let assistant_meta = api
         .as_ref()
@@ -163,6 +167,7 @@ async fn run(args: Args) -> Result<u8> {
     }
     report.complete = true;
     report.write(&args.out)?;
+    mcp.close().await;
     println!("\nJSON written to {}", args.out.display());
     Ok(exit_status_of(&report, &args))
 }

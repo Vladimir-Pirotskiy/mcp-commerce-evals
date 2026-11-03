@@ -1,6 +1,6 @@
 //! The queries file: what buyers ask and which parts count as a right answer.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -71,6 +71,28 @@ pub fn load(path: &Path) -> Result<Vec<Query>> {
     parse(&read_file(path)?)
 }
 
+/// Keeps only the queries whose kind is in `kinds`; an empty `kinds` keeps them all.
+///
+/// # Errors
+///
+/// Fails when a kind names no query, listing the kinds the file has.
+pub fn select_kinds(queries: Vec<Query>, kinds: &[String]) -> Result<Vec<Query>> {
+    if kinds.is_empty() {
+        return Ok(queries);
+    }
+    let known: BTreeSet<&str> = queries.iter().map(|q| q.kind.as_str()).collect();
+    if let Some(unknown) = kinds.iter().find(|k| !known.contains(k.as_str())) {
+        return Err(Error::Input(format!(
+            "no query has kind {unknown:?}; the file has {}",
+            known.into_iter().collect::<Vec<_>>().join(", ")
+        )));
+    }
+    Ok(queries
+        .into_iter()
+        .filter(|q| kinds.contains(&q.kind))
+        .collect())
+}
+
 fn validate(queries: &[Query]) -> Result<()> {
     if queries.is_empty() {
         return Err(Error::Input("the queries file has no queries".to_owned()));
@@ -112,6 +134,25 @@ mod tests {
         assert_eq!(prefer_existing(present, missing), present);
         assert_eq!(prefer_existing(missing, present), present);
         assert!(default_path().exists());
+    }
+
+    #[test]
+    fn select_kinds_keeps_the_named_kinds_and_rejects_an_unknown_one() {
+        let all = parse(
+            r#"[{"id":"a","kind":"typo","text":"t","expected":["X"]},
+                {"id":"b","kind":"filter","text":"t","expected":["X"]},
+                {"id":"c","kind":"typo","text":"t","expected":["X"]}]"#,
+        )
+        .unwrap();
+
+        let typos = select_kinds(all.clone(), &["typo".to_owned()]).unwrap();
+        assert_eq!(
+            typos.iter().map(|q| q.id.as_str()).collect::<Vec<_>>(),
+            ["a", "c"]
+        );
+        assert_eq!(select_kinds(all.clone(), &[]).unwrap().len(), 3);
+        let error = select_kinds(all, &["nope".to_owned()]).unwrap_err();
+        assert!(error.to_string().contains("filter, typo"), "{error}");
     }
 
     #[test]
