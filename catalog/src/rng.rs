@@ -1,7 +1,7 @@
-//! A tiny deterministic generator (SplitMix64) so the catalog never depends on a RNG crate's
+//! A tiny deterministic generator (`SplitMix64`) so the catalog never depends on a RNG crate's
 //! output stability.
 
-/// SplitMix64 state.
+/// `SplitMix64` state.
 pub(crate) struct Rng(u64);
 
 impl Rng {

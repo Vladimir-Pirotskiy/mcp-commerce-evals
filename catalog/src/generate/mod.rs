@@ -35,6 +35,7 @@ const LINES: [&str; 8] = [
 ];
 
 /// The catalog the generator produces for a seed and a size.
+#[must_use]
 pub fn generate(seed: u64, count: usize) -> Vec<Part> {
     let mut rng = Rng::new(seed);
     let mut seen_titles = HashSet::new();

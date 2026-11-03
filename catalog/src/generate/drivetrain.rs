@@ -21,11 +21,11 @@ pub(super) fn chain(rng: &mut Rng) -> Draft {
     let links = *rng.pick(&[112, 116, 118, 126]);
     let price = spread(rng, 8 + 4 * (speed - 7), 14);
     Draft::new(format!("{speed}-Speed Chain"), price)
-        .attr("speed", speed_tag(speed))
+        .attr("speed", &speed_tag(speed))
         .attr("links", links)
         .attr("finish", finish)
         .attr("quick_link", "included")
-        .fit(speed_tag(speed))
+        .fit(&speed_tag(speed))
         .fits(bikes_for_speed(speed))
         .say(format!(
             "A {finish} chain with {links} links for {speed}-speed drivetrains."
@@ -55,11 +55,11 @@ pub(super) fn cassette(rng: &mut Rng) -> Draft {
     };
     let price = spread(rng, 30 + 10 * (speed - 8), 60);
     Draft::new(format!("{speed}-Speed {range}T {usage} Cassette"), price)
-        .attr("speed", speed_tag(speed))
-        .attr("tooth_range", format!("{range}T"))
+        .attr("speed", &speed_tag(speed))
+        .attr("tooth_range", &format!("{range}T"))
         .attr("freehub", freehub)
         .attr("weight_g", rng.range(190, 480))
-        .fit(speed_tag(speed))
+        .fit(&speed_tag(speed))
         .fits(&[usage])
         .say(format!(
             "{speed}-speed {usage} cassette with a {range}T range on a {freehub} freehub."
@@ -81,9 +81,9 @@ pub(super) fn chainring(rng: &mut Rng) -> Draft {
     let price = spread(rng, 28, 55);
     Draft::new(format!("{teeth}T {kind} Chainring {bcd}mm BCD"), price)
         .attr("teeth", teeth)
-        .attr("bcd", format!("{bcd}mm"))
-        .attr("speed", speed_tag(speed))
-        .fit(speed_tag(speed))
+        .attr("bcd", &format!("{bcd}mm"))
+        .attr("speed", &speed_tag(speed))
+        .fit(&speed_tag(speed))
         .fits(&[usage])
         .say(format!(
             "A {teeth}-tooth {kind} chainring on a {bcd}mm bolt circle."
@@ -107,11 +107,11 @@ pub(super) fn rear_derailleur(rng: &mut Rng) -> Draft {
     let price = spread(rng, 35 + 12 * (speed - 8), 90);
     let clutch_text = if clutch { "clutch" } else { "no-clutch" };
     Draft::new(format!("{speed}-Speed {cage}-cage Rear Derailleur"), price)
-        .attr("speed", speed_tag(speed))
+        .attr("speed", &speed_tag(speed))
         .attr("cage", cage)
-        .attr("max_cog", format!("{max_cog}T"))
+        .attr("max_cog", &format!("{max_cog}T"))
         .attr("clutch", if clutch { "yes" } else { "no" })
-        .fit(speed_tag(speed))
+        .fit(&speed_tag(speed))
         .fits(bikes_for_speed(speed))
         .say(format!(
             "A {cage}-cage rear derailleur ({clutch_text}) that takes up to a {max_cog}T cog."

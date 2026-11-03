@@ -16,7 +16,7 @@ struct Args {
     /// Address to listen on.
     #[arg(long, default_value = "127.0.0.1:8787")]
     bind: SocketAddr,
-    /// Base URL of the fake checkout links returned by create_cart.
+    /// Base URL of the fake checkout links returned by `create_cart`.
     #[arg(long, default_value = "https://demo-shop.example/checkout")]
     checkout_url: String,
     /// Extra Host header value to accept (repeatable); required behind a public hostname.
@@ -62,9 +62,10 @@ async fn run(args: Args) -> std::io::Result<()> {
         trust_forwarded_for: args.trust_forwarded_for,
         trusted_proxy_hops: args.trusted_proxy_hops,
     };
-    let catalog = Arc::new(catalog::Catalog::new(catalog::generate(
-        args.seed, args.parts,
-    )));
+    let catalog = Arc::new(
+        catalog::Catalog::new(catalog::generate(args.seed, args.parts))
+            .map_err(std::io::Error::other)?,
+    );
     println!(
         "reference-store: {} parts, MCP endpoint http://{local}/mcp",
         catalog.parts().len()

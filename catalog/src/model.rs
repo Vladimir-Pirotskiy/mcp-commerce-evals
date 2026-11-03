@@ -49,6 +49,19 @@ pub enum Category {
     Hub,
 }
 
+impl Part {
+    /// The price in whole cents, the exact form of [`Part::price_usd`]; use it for arithmetic.
+    #[must_use]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "prices are positive and below $10,000, so the rounded cents fit in u32"
+    )]
+    pub fn price_cents(&self) -> u32 {
+        (self.price_usd * 100.0).round() as u32
+    }
+}
+
 impl Category {
     /// Every category, in catalog order.
     pub const ALL: [Category; 18] = [
@@ -73,6 +86,7 @@ impl Category {
     ];
 
     /// Two-letter code used inside part numbers.
+    #[must_use]
     pub fn code(self) -> &'static str {
         match self {
             Category::Chain => "CH",
@@ -97,6 +111,7 @@ impl Category {
     }
 
     /// Plain-language name of the category, as a buyer would write it.
+    #[must_use]
     pub fn label(self) -> &'static str {
         match self {
             Category::Chain => "chain",
@@ -139,6 +154,7 @@ pub enum StockStatus {
 
 impl StockStatus {
     /// True when the part can ship from the shelf now (in stock or low stock).
+    #[must_use]
     pub fn is_on_shelf(self) -> bool {
         matches!(self, StockStatus::InStock | StockStatus::LowStock)
     }

@@ -72,7 +72,7 @@ pub(super) fn cable(rng: &mut Rng) -> Draft {
     let kind = if shift { "Shift" } else { "Brake" };
     let price = spread(rng, 6, 14);
     Draft::new(format!("{kind} Cable Set {length}mm {head}"), price)
-        .attr("cable_type", kind.to_lowercase())
+        .attr("cable_type", &kind.to_lowercase())
         .attr("length_mm", length)
         .attr("coating", coating)
         .attr("lever_end", head)

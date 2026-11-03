@@ -85,8 +85,17 @@ fn tooth_form(token: &str) -> Option<String> {
     (is_number(num) && num.len() <= 2).then(|| num.to_owned())
 }
 
-/// Drops a plural `s` from plain words of four or more letters.
+/// Drops a plural from plain words of four or more letters: `es` after `x`, `z`, `ch`, `sh` and
+/// `ss` (`boxes` is `box`), otherwise a bare `s`.
 fn stem(token: &str) -> &str {
+    let es_plural = token.len() > 4
+        && token.chars().all(|c| c.is_ascii_alphabetic())
+        && ["xes", "zes", "ches", "shes", "sses"]
+            .iter()
+            .any(|ending| token.ends_with(ending));
+    if es_plural {
+        return &token[..token.len() - 2];
+    }
     let plural = token.len() > 3
         && token.chars().all(|c| c.is_ascii_alphabetic())
         && token.ends_with('s')
@@ -134,6 +143,7 @@ pub fn tokens(input: &str) -> Vec<String> {
 }
 
 /// Tokens of a buyer query with stopwords removed.
+#[must_use]
 pub fn query_tokens(input: &str) -> Vec<String> {
     let mut out = tokens(input);
     out.retain(|t| !STOPWORDS.contains(&t.as_str()));
@@ -153,6 +163,7 @@ pub fn synonyms(token: &str, allow_typo: bool) -> &'static [&'static str] {
 
 /// The canonical spelling of a compatibility tag: `11 speed` is `11-speed`, `Disc Brakes` is
 /// `disc-brake`.
+#[must_use]
 pub fn canonical_tag(raw: &str) -> String {
     tokens(raw)
         .iter()
@@ -286,6 +297,15 @@ mod tests {
             query_tokens("a chain that fits my 11-speed road bike"),
             vec!["chain", "11speed", "road"]
         );
+    }
+
+    #[test]
+    fn es_plurals_lose_the_whole_ending() {
+        assert_eq!(
+            tokens("boxes brushes watches buzzes glasses"),
+            ["box", "brush", "watch", "buzz", "glass"]
+        );
+        assert_eq!(tokens("tires cases axes"), ["tire", "case", "axe"]);
     }
 
     #[test]

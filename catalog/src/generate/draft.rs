@@ -24,12 +24,12 @@ impl Draft {
         }
     }
 
-    pub(super) fn attr(mut self, key: &str, value: impl ToString) -> Self {
+    pub(super) fn attr(mut self, key: &str, value: impl ToString + Copy) -> Self {
         self.attributes.insert(key.to_owned(), value.to_string());
         self
     }
 
-    pub(super) fn fit(mut self, tag: impl ToString) -> Self {
+    pub(super) fn fit(mut self, tag: impl ToString + Copy) -> Self {
         self.fits.push(tag.to_string());
         self
     }
@@ -65,8 +65,7 @@ pub(super) fn bikes_for_speed(speed: u32) -> &'static [&'static str] {
     match speed {
         8 => &["commuter", "mountain"],
         9 => &["commuter", "mountain", "road"],
-        10 => &["road", "gravel", "mountain"],
-        11 => &["road", "gravel", "mountain"],
+        10 | 11 => &["road", "gravel", "mountain"],
         _ => &["road", "gravel", "mountain", "e-bike"],
     }
 }

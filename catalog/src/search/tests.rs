@@ -91,6 +91,7 @@ fn shelf() -> Catalog {
         tire,
         lube,
     ])
+    .unwrap()
 }
 
 fn ids(results: &SearchResults<'_>) -> Vec<String> {
@@ -170,7 +171,7 @@ fn a_catalog_word_one_typo_from_a_synonym_key_is_not_rewritten() {
         15.0,
         &[],
     );
-    let catalog = Catalog::new(vec![tire, pad]);
+    let catalog = Catalog::new(vec![tire, pad]).unwrap();
     assert_eq!(ask(&catalog, "black"), ["ALD-TR-4002"]);
     assert_eq!(ask(&catalog, "block")[0], "ALD-BP-6001");
 }
@@ -182,7 +183,7 @@ fn a_tooth_range_is_found_by_its_numbers() {
 
 #[test]
 fn nothing_matches_gibberish() {
-    assert!(ask(&shelf(), "zzzxqv").is_empty());
+    assert_eq!(ask(&shelf(), "zzzxqv"), Vec::<String>::new());
 }
 
 #[test]
@@ -269,7 +270,7 @@ fn get_ignores_case_and_punctuation() {
 
 #[test]
 fn every_generated_part_is_found_first_by_its_own_number() {
-    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE));
+    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).unwrap();
     for part in catalog.parts() {
         let query = SearchQuery {
             text: part.id.clone(),
@@ -283,7 +284,7 @@ fn every_generated_part_is_found_first_by_its_own_number() {
 
 #[test]
 fn every_generated_part_is_in_the_top_five_for_its_own_title() {
-    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE));
+    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).unwrap();
     for part in catalog.parts() {
         let query = SearchQuery {
             text: part.title.clone(),
@@ -293,4 +294,47 @@ fn every_generated_part_is_in_the_top_five_for_its_own_title() {
         let found = ids(&catalog.search(&query));
         assert!(found.contains(&part.id), "{} not in {found:?}", part.title);
     }
+}
+
+#[test]
+fn part_numbers_that_compact_to_the_same_key_are_rejected() {
+    let a = part("ALD-CH-1001", "Chain", Category::Chain, 20.0, &[]);
+    let b = part("ald ch 1001", "Other chain", Category::Chain, 21.0, &[]);
+
+    let Err(error) = Catalog::new(vec![a, b]) else {
+        panic!("a duplicate key must be refused");
+    };
+
+    assert_eq!(
+        (error.first.as_str(), error.second.as_str()),
+        ("ALD-CH-1001", "ald ch 1001")
+    );
+}
+
+#[test]
+fn the_generated_catalog_has_unique_part_numbers() {
+    assert!(Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).is_ok());
+}
+
+#[test]
+fn matching_one_of_two_query_words_keeps_eighty_percent_of_the_score() {
+    let zebra = part("ZZZ-1", "Zebra", Category::Chain, 5.0, &[]);
+    let lion = part("ZZZ-2", "Zebra Lion", Category::Chain, 6.0, &[]);
+    let catalog = Catalog::new(vec![zebra, lion]).unwrap();
+    let score_of = |text: &str, id: &str| {
+        let results = catalog.search(&SearchQuery {
+            text: text.to_owned(),
+            limit: 10,
+            ..Default::default()
+        });
+        results.hits.iter().find(|h| h.part.id == id).unwrap().score
+    };
+
+    let alone = score_of("zebra", "ZZZ-1");
+    let with_missing_word = score_of("zebra lion", "ZZZ-1");
+
+    assert!(
+        (with_missing_word - 0.8 * alone).abs() < 1e-9,
+        "{with_missing_word} vs {alone}"
+    );
 }

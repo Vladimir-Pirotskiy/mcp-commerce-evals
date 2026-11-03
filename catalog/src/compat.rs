@@ -4,7 +4,7 @@
 //! standard). A part that lists no tag in a dimension does not care about it; a part that lists
 //! some tags in a dimension fits only a bike that has one of them.
 
-use crate::text::canonical_tag;
+use crate::text::{canonical_tag, synonyms};
 
 /// Drivetrain speeds.
 pub const SPEEDS: [&str; 5] = ["8-speed", "9-speed", "10-speed", "11-speed", "12-speed"];
@@ -42,9 +42,23 @@ pub fn is_compatible(fits: &[String], required: &[String]) -> bool {
     })
 }
 
-/// Canonicalizes free-form requirements such as `11 speed` or `Disc Brakes`.
+/// The canonical form of one requirement. A word that is not a tag but is a query synonym for
+/// one (`mtb` for `mountain`) becomes that tag, like the same word typed in the search text.
+fn canonical_requirement(raw: &str) -> String {
+    let tag = canonical_tag(raw);
+    if dimension_of(&tag).is_some() {
+        return tag;
+    }
+    synonyms(&tag, false)
+        .iter()
+        .map(|word| canonical_tag(word))
+        .find(|candidate| dimension_of(candidate).is_some())
+        .unwrap_or(tag)
+}
+
+/// Canonicalizes free-form requirements such as `11 speed`, `Disc Brakes` or `mtb`.
 pub fn canonical_tags(raw: &[String]) -> Vec<String> {
-    raw.iter().map(|t| canonical_tag(t)).collect()
+    raw.iter().map(|t| canonical_requirement(t)).collect()
 }
 
 #[cfg(test)]
@@ -73,6 +87,15 @@ mod tests {
     fn unknown_requirement_needs_a_literal_match() {
         assert!(!is_compatible(&tags(&["road"]), &tags(&["tandem"])));
         assert!(is_compatible(&tags(&["tandem"]), &tags(&["tandem"])));
+    }
+
+    #[test]
+    fn a_query_synonym_maps_to_the_catalog_tag() {
+        let raw = tags(&["MTB", "city", "tandem"]);
+        assert_eq!(
+            canonical_tags(&raw),
+            tags(&["mountain", "commuter", "tandem"])
+        );
     }
 
     #[test]
