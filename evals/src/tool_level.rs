@@ -84,6 +84,15 @@ pub struct ToolLevelReport {
     pub queries: Vec<QueryResult>,
 }
 
+impl ToolLevelReport {
+    /// Queries whose search call failed, `no_match` ones included: they are in none of the
+    /// ranked aggregates, but a broken call is a broken call.
+    #[must_use]
+    pub fn error_count(&self) -> usize {
+        self.overall.errors + self.no_match.as_ref().map_or(0, |m| m.errors)
+    }
+}
+
 fn no_match_summary(results: &[&QueryResult]) -> Option<NoMatchSummary> {
     if results.is_empty() {
         return None;

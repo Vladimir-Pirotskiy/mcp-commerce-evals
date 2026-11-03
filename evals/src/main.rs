@@ -219,7 +219,7 @@ fn exit_status_of(report: &EvalReport, args: &Args) -> u8 {
     for failure in &failures {
         eprintln!("mcp-commerce-evals: {failure}");
     }
-    let query_errors = report.tool_level.overall.errors
+    let query_errors = report.tool_level.error_count()
         + report
             .assistant_level
             .as_ref()

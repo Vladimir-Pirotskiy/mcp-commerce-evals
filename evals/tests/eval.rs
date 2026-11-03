@@ -804,6 +804,22 @@ async fn cli_exits_2_when_a_query_errors() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_2_when_only_a_no_match_query_errors() {
+    let store = spawn_store().await;
+    let out = scratch_file("no-match-errors");
+
+    let (code, stderr) = run_cli(
+        &store.base,
+        &["--kind", "no_match", "--search-tool", "no_such_tool"],
+        &out,
+    )
+    .await;
+
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains("4 queries errored"), "{stderr}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn cli_refuses_to_overwrite_a_report_unless_forced() {
     let store = spawn_store().await;
     let out = scratch_file("force");
