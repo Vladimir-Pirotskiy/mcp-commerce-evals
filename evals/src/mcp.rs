@@ -47,6 +47,10 @@ pub struct McpClient {
 impl McpClient {
     /// Opens a session: `initialize` followed by `notifications/initialized`. Every request,
     /// including the ones made later, gives up after `timeout`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the server is unreachable or does not answer `initialize` as MCP requires.
     pub async fn connect(url: &str, timeout: Duration) -> Result<Self> {
         let http = reqwest::Client::builder().timeout(timeout).build()?;
         let mut client = Self {
@@ -77,17 +81,26 @@ impl McpClient {
     }
 
     /// What the server reported when the session was opened.
+    #[must_use]
     pub fn handshake(&self) -> &ServerHandshake {
         &self.handshake
     }
 
     /// The server's tool definitions, as MCP sends them (`name`, `description`, `inputSchema`).
+    ///
+    /// # Errors
+    ///
+    /// Fails when the request or the JSON-RPC reply fails.
     pub async fn list_tools(&mut self) -> Result<Vec<Value>> {
         let result = self.request("tools/list", json!({})).await?;
         Ok(result["tools"].as_array().cloned().unwrap_or_default())
     }
 
     /// Calls a tool and flattens the result.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the request or the JSON-RPC reply fails.
     pub async fn call_tool(&mut self, name: &str, arguments: Value) -> Result<ToolOutput> {
         let result = self
             .request(

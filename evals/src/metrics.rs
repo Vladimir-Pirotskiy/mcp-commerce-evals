@@ -16,6 +16,7 @@ pub fn normalize(id: &str) -> String {
 }
 
 /// 1-based position of the first returned id that is expected.
+#[must_use]
 pub fn rank_of(returned: &[Option<String>], expected: &[String]) -> Option<usize> {
     let wanted: Vec<String> = expected.iter().map(|id| normalize(id)).collect();
     returned
@@ -50,6 +51,7 @@ pub struct Interval {
 
 /// The 95% Wilson score interval for `successes` out of `n`; `0..0` when there are no trials.
 /// It stays inside 0..1 and is honest at small `n`, unlike the normal approximation.
+#[must_use]
 pub fn wilson(successes: usize, n: usize) -> Interval {
     if n == 0 {
         return Interval {
@@ -134,6 +136,7 @@ fn wanted_set(expected: &[String]) -> HashSet<String> {
 }
 
 /// Share of the expected ids that appear in the first `k` returned ids.
+#[must_use]
 pub fn recall_at(returned: &[Option<String>], expected: &[String], k: usize) -> f64 {
     let wanted = wanted_set(expected);
     let found: HashSet<String> = returned

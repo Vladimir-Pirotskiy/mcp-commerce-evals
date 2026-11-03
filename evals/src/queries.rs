@@ -32,6 +32,7 @@ const BUILD_TIME_QUERIES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/queries.j
 
 /// The queries file to use when none is given: the shipped one under the current directory,
 /// else the copy in the source tree this binary was built from.
+#[must_use]
 pub fn default_path() -> PathBuf {
     prefer_existing(Path::new(SHIPPED_QUERIES), Path::new(BUILD_TIME_QUERIES))
 }
@@ -41,12 +42,20 @@ fn prefer_existing(first: &Path, fallback: &Path) -> PathBuf {
 }
 
 /// Reads a queries file as text.
+///
+/// # Errors
+///
+/// Fails when the file cannot be read.
 pub fn read_file(path: &Path) -> Result<String> {
     std::fs::read_to_string(path)
         .map_err(|e| Error::Input(format!("cannot read {}: {e}", path.display())))
 }
 
 /// Parses and validates a queries file (a JSON array of queries).
+///
+/// # Errors
+///
+/// Fails when the text is not valid JSON of the right shape, or a query is invalid.
 pub fn parse(raw: &str) -> Result<Vec<Query>> {
     let queries: Vec<Query> = serde_json::from_str(raw)?;
     validate(&queries)?;
@@ -54,6 +63,10 @@ pub fn parse(raw: &str) -> Result<Vec<Query>> {
 }
 
 /// Reads, parses and validates a queries file.
+///
+/// # Errors
+///
+/// Fails when the file cannot be read or holds an invalid query set.
 pub fn load(path: &Path) -> Result<Vec<Query>> {
     parse(&read_file(path)?)
 }

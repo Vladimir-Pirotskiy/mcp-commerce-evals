@@ -33,6 +33,10 @@ pub struct EvalReport {
 
 impl EvalReport {
     /// Writes the report as pretty JSON, stamping the time of the write.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be written.
     pub fn write(&mut self, path: &Path) -> Result<()> {
         self.unix_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -63,6 +67,7 @@ fn tool_row(label: &str, s: &Summary) -> String {
 
 /// The tool-level result as Markdown: a table per kind, the headline rows with and without the
 /// filter queries, and a list of the queries that missed at rank 1. Intervals are 95% Wilson.
+#[must_use]
 pub fn tool_level_markdown(report: &ToolLevelReport) -> String {
     let mut out = String::from(
         "| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 | nDCG@10 | MRR | p50 ms | p95 ms |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|\n",
@@ -127,6 +132,7 @@ fn assistant_row(label: &str, s: &AssistantSummary) -> String {
 }
 
 /// The assistant-level result as a Markdown table.
+#[must_use]
 pub fn assistant_markdown(report: &AssistantReport) -> String {
     let mut out = format!(
         "Model: {} (temperature {})\n\n| kind | queries | committed answer correct | correct, API errors excluded | mentions expected | unanswered | API errors | tool calls per query | input tokens | output tokens |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n",

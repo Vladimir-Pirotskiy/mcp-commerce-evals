@@ -25,6 +25,7 @@ pub struct AssistantMeta {
 
 impl AssistantMeta {
     /// The settings for a run of `model` with at most `max_turns` turns per query.
+    #[must_use]
     pub fn new(model: &str, max_turns: u32) -> Self {
         Self {
             model: model.to_owned(),
@@ -77,6 +78,7 @@ pub struct RunSettings<'a> {
 
 impl Meta {
     /// Collects the settings of a run and what the server said about itself.
+    #[must_use]
     pub fn new(
         settings: &RunSettings<'_>,
         handshake: &ServerHandshake,

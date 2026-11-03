@@ -44,6 +44,7 @@ impl fmt::Display for GateFailure {
 
 impl Gates {
     /// The gates that `overall` does not meet.
+    #[must_use]
     pub fn failures(&self, overall: &Summary) -> Vec<GateFailure> {
         let checks = [
             ("--min-hit5", self.min_hit5, overall.hit_at_5),
@@ -66,6 +67,7 @@ impl Gates {
 
 /// The exit code for a finished run: 0, or [`EXIT_QUERY_ERRORS`], or [`EXIT_GATE_FAILED`] when a
 /// gate failed (which wins, because it is the more specific verdict).
+#[must_use]
 pub fn exit_status(query_errors: usize, failures: &[GateFailure]) -> u8 {
     if !failures.is_empty() {
         EXIT_GATE_FAILED
@@ -77,6 +79,10 @@ pub fn exit_status(query_errors: usize, failures: &[GateFailure]) -> u8 {
 }
 
 /// Parses a score threshold, which must lie between 0 and 1.
+///
+/// # Errors
+///
+/// Fails when the text is not a number between 0 and 1.
 pub fn parse_threshold(text: &str) -> Result<f64> {
     let value: f64 = text
         .parse()
@@ -103,7 +109,8 @@ mod tests {
 
     #[test]
     fn unset_gates_never_fail() {
-        assert!(Gates::default().failures(&overall(0.0, 0.0)).is_empty());
+        let failures = Gates::default().failures(&overall(0.0, 0.0));
+        assert_eq!(failures, Vec::new());
     }
 
     #[test]
@@ -115,7 +122,8 @@ mod tests {
         let failures = gates.failures(&overall(0.85, 0.9));
         assert_eq!(failures.len(), 1);
         assert!(failures[0].to_string().contains("hit5"), "{}", failures[0]);
-        assert!(gates.failures(&overall(0.9, 0.8)).is_empty());
+        let none = gates.failures(&overall(0.9, 0.8));
+        assert_eq!(none, Vec::new());
     }
 
     #[test]

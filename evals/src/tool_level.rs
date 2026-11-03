@@ -71,13 +71,12 @@ pub struct ToolLevelReport {
 /// or `hits`, read from `structuredContent` or else from the JSON text block.
 fn product_list(output: &ToolOutput) -> Result<Vec<Value>> {
     let parsed;
-    let body = match &output.structured {
-        Some(value) => value,
-        None => {
-            parsed = serde_json::from_str::<Value>(&output.text)
-                .map_err(|_| Error::Shape(ShapeProblem::NotJson))?;
-            &parsed
-        }
+    let body = if let Some(value) = &output.structured {
+        value
+    } else {
+        parsed = serde_json::from_str::<Value>(&output.text)
+            .map_err(|_| Error::Shape(ShapeProblem::NotJson))?;
+        &parsed
     };
     LIST_KEYS
         .iter()
@@ -90,6 +89,10 @@ fn product_list(output: &ToolOutput) -> Result<Vec<Value>> {
 /// `limit` cannot change the score. An entry with no `id`, `sku`, `part_number` or `product_id`
 /// stays in the list as `None`, because it still occupies a rank. A repeated id keeps only its
 /// first position. A reply that is not a recognisable product list is an error.
+///
+/// # Errors
+///
+/// Fails when the reply is not a recognisable product list.
 pub fn result_ids(output: &ToolOutput, top_k: usize) -> Result<Vec<Option<String>>> {
     let mut seen = HashSet::new();
     Ok(product_list(output)?
@@ -165,11 +168,7 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
 }
 
 /// Runs every query in file order, after one untimed warm-up call.
-pub async fn run(
-    mcp: &mut McpClient,
-    queries: &[Query],
-    options: &Options,
-) -> Result<ToolLevelReport> {
+pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> ToolLevelReport {
     if let Some(first) = queries.first() {
         // The result is deliberately dropped: this call only opens the connection and warms
         // the store's caches, so the first measured query is not penalised.
@@ -191,7 +190,7 @@ pub async fn run(
         .filter(|r| r.kind != FILTER_KIND)
         .cloned()
         .collect();
-    Ok(ToolLevelReport {
+    ToolLevelReport {
         overall: summarize(&results),
         overall_without_filter: summarize(&without_filter),
         by_kind: kinds
@@ -199,7 +198,7 @@ pub async fn run(
             .map(|(kind, rs)| (kind.clone(), summarize(rs)))
             .collect(),
         queries: results,
-    })
+    }
 }
 
 #[cfg(test)]

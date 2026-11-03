@@ -49,6 +49,10 @@ pub struct ApiKey(String);
 
 impl ApiKey {
     /// Wraps a key read from the environment; an empty or blank key is refused up front.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the key is empty or blank.
     pub fn new(key: String) -> Result<Self> {
         if key.trim().is_empty() {
             return Err(Error::Input("ANTHROPIC_API_KEY is empty".to_owned()));
@@ -75,6 +79,10 @@ pub struct Anthropic {
 
 impl Anthropic {
     /// A client that talks to `base_url` as `model`; each request gives up after `timeout`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the HTTP client cannot be built.
     pub fn new(key: ApiKey, model: &str, base_url: &str, timeout: Duration) -> Result<Self> {
         Ok(Self {
             http: reqwest::Client::builder().timeout(timeout).build()?,
@@ -93,6 +101,7 @@ impl Anthropic {
     }
 
     /// The model this client asks.
+    #[must_use]
     pub fn model(&self) -> &str {
         &self.model
     }
@@ -174,6 +183,7 @@ fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
 }
 
 /// MCP tool definitions in the shape the Messages API wants.
+#[must_use]
 pub fn api_tools(mcp_tools: &[Value]) -> Vec<Value> {
     mcp_tools
         .iter()
@@ -225,6 +235,7 @@ pub struct AssistantResult {
 }
 
 /// Whether `answer` contains one of the expected part ids, ignoring case and punctuation.
+#[must_use]
 pub fn names_expected(answer: &str, expected: &[String]) -> bool {
     let answer = normalize(answer);
     expected.iter().any(|id| answer.contains(&normalize(id)))
@@ -232,6 +243,7 @@ pub fn names_expected(answer: &str, expected: &[String]) -> bool {
 
 /// What the last non-empty line of a reply commits to, if it is an `ANSWER:` line. Markdown
 /// emphasis around the line is ignored.
+#[must_use]
 pub fn committed_answer(reply: &str) -> Option<String> {
     let line = reply.lines().rev().find(|line| !line.trim().is_empty())?;
     let line = line.trim_matches(|c: char| c.is_whitespace() || c == '*' || c == '`');
@@ -241,6 +253,7 @@ pub fn committed_answer(reply: &str) -> Option<String> {
 }
 
 /// Whether a committed answer is exactly one of the expected ids (after normalising both).
+#[must_use]
 pub fn is_correct(committed: Option<&str>, expected: &[String]) -> bool {
     committed.is_some_and(|value| {
         value != ANSWER_NONE && expected.iter().any(|id| normalize(id) == normalize(value))
@@ -427,6 +440,7 @@ fn summarize(results: &[&AssistantResult]) -> AssistantSummary {
 
 impl AssistantReport {
     /// Builds the report for the results gathered so far.
+    #[must_use]
     pub fn from_results(model: &str, results: Vec<AssistantResult>) -> Self {
         let mut kinds: BTreeMap<String, Vec<&AssistantResult>> = BTreeMap::new();
         for result in &results {
@@ -447,6 +461,10 @@ impl AssistantReport {
 
 /// Runs every query through the model, in file order. After each query `on_progress` receives
 /// the report so far, so a caller can save partial results of a paid run that fails midway.
+///
+/// # Errors
+///
+/// Fails when the store's tool list cannot be read, or when `on_progress` fails.
 pub async fn run(
     api: &Anthropic,
     mcp: &mut McpClient,

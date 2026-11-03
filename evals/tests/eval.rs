@@ -94,9 +94,7 @@ async fn tool_level_eval_against_the_in_process_store() {
     let queries = queries::load(Path::new(QUERIES)).unwrap();
     let mut mcp = connect(&store.base).await;
 
-    let report = tool_level::run(&mut mcp, &queries, &options())
-        .await
-        .unwrap();
+    let report = tool_level::run(&mut mcp, &queries, &options()).await;
 
     assert_eq!(report.overall.n, 40);
     assert_eq!(report.overall.errors, 0);
@@ -142,9 +140,7 @@ async fn a_missing_search_tool_is_reported_per_query_not_as_a_crash() {
         repeat: 1,
     };
 
-    let report = tool_level::run(&mut mcp, &queries[..2], &wrong)
-        .await
-        .unwrap();
+    let report = tool_level::run(&mut mcp, &queries[..2], &wrong).await;
 
     assert_eq!(report.overall.errors, 2);
     assert_eq!(report.overall.hit_at_5, 0.0);
@@ -218,7 +214,7 @@ async fn spawn_mock(script: Vec<Reply>) -> (Server, Arc<MockApi>) {
     (Server { base, task }, mock)
 }
 
-fn api_reply(stop_reason: &str, content: Value) -> Reply {
+fn api_reply(stop_reason: &str, content: &Value) -> Reply {
     Reply::new(
         200,
         json!({
@@ -232,7 +228,7 @@ fn api_reply(stop_reason: &str, content: Value) -> Reply {
 fn tool_use(query: &str) -> Reply {
     api_reply(
         "tool_use",
-        json!([
+        &json!([
             { "type": "text", "text": "Let me look." },
             { "type": "tool_use", "id": "toolu_1", "name": "search_products",
               "input": { "query": query, "limit": 3 } }
@@ -241,7 +237,7 @@ fn tool_use(query: &str) -> Reply {
 }
 
 fn reply_with(stop_reason: &str, text: &str) -> Reply {
-    api_reply(stop_reason, json!([{ "type": "text", "text": text }]))
+    api_reply(stop_reason, &json!([{ "type": "text", "text": text }]))
 }
 
 fn final_answer(text: &str) -> Reply {
@@ -310,7 +306,7 @@ async fn the_model_searches_through_the_store_and_commits_to_the_right_part() {
             .contains("ANSWER: <part id>")
     );
     assert_eq!(seen[0].1["tools"].as_array().unwrap().len(), 4);
-    assert!(seen[0].1["tools"][0]["input_schema"]["type"] == "object");
+    assert_eq!(seen[0].1["tools"][0]["input_schema"]["type"], "object");
     let reply = &seen[1].1["messages"][2]["content"][0];
     assert_eq!(reply["type"], "tool_result");
     assert_eq!(reply["tool_use_id"], "toolu_1");
@@ -535,7 +531,7 @@ async fn a_store_that_ignores_limit_is_scored_on_the_top_k_only() {
         ..options()
     };
 
-    let report = tool_level::run(&mut mcp, &queries, &options).await.unwrap();
+    let report = tool_level::run(&mut mcp, &queries, &options).await;
 
     assert_eq!(report.queries[0].returned.len(), 5);
     assert_eq!(report.queries[0].rank, None);
@@ -548,9 +544,7 @@ async fn an_unrecognised_result_shape_counts_as_an_error() {
     let mut mcp = connect(&server.base).await;
     let queries = [query("a", "thing", "WANTED")];
 
-    let report = tool_level::run(&mut mcp, &queries, &options())
-        .await
-        .unwrap();
+    let report = tool_level::run(&mut mcp, &queries, &options()).await;
 
     assert_eq!(report.overall.errors, 1);
     assert!(report.queries[0].error.is_some());
@@ -675,7 +669,7 @@ async fn repeat_times_each_query_that_many_times_after_one_untimed_warm_up() {
         ..options()
     };
 
-    let report = tool_level::run(&mut mcp, &queries, &options).await.unwrap();
+    let report = tool_level::run(&mut mcp, &queries, &options).await;
 
     assert_eq!(mock.calls.load(Ordering::SeqCst), 1 + 2 * 3);
     assert_eq!(report.overall.latency_samples, 6);

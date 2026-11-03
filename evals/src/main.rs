@@ -112,7 +112,7 @@ async fn run(args: Args) -> Result<u8> {
         top_k: args.top_k,
         repeat,
     };
-    let tool_level = tool_level::run(&mut mcp, &queries, &options).await?;
+    let tool_level = tool_level::run(&mut mcp, &queries, &options).await;
     println!("Tool-level ({} queries, {})\n", queries.len(), args.url);
     println!("{}", tool_level_markdown(&tool_level));
 
