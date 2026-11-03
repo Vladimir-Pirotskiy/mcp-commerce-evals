@@ -12,8 +12,11 @@ use serde_json::{Value, json};
 
 use crate::error::{Error, Result};
 
-/// Protocol revision the client asks for. Servers may answer with another one.
-const PROTOCOL_VERSION: &str = "2025-06-18";
+/// Protocol revisions this client speaks over Streamable HTTP, newest first. A server may
+/// negotiate any of them, and `mcp-protocol-version` follows its choice.
+pub const SUPPORTED_PROTOCOL_VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
+/// The revision requested in `initialize`: the newest one this client has been tested against.
+const REQUESTED_PROTOCOL_VERSION: &str = SUPPORTED_PROTOCOL_VERSIONS[1];
 
 /// What a tool call returned.
 #[derive(Debug, Clone)]
@@ -42,6 +45,8 @@ pub struct McpClient {
     session: Option<String>,
     next_id: u64,
     handshake: ServerHandshake,
+    /// Sent as `mcp-protocol-version`: the requested revision until the server picks one.
+    protocol_header: &'static str,
 }
 
 impl McpClient {
@@ -62,6 +67,7 @@ impl McpClient {
                 server_info: Value::Null,
                 protocol_version: String::new(),
             },
+            protocol_header: REQUESTED_PROTOCOL_VERSION,
         };
         client.initialize().await?;
         Ok(client)
@@ -69,20 +75,28 @@ impl McpClient {
 
     /// `initialize` followed by `notifications/initialized`, on a client without a session.
     async fn initialize(&mut self) -> Result<()> {
+        self.protocol_header = REQUESTED_PROTOCOL_VERSION;
         let params = json!({
-            "protocolVersion": PROTOCOL_VERSION,
+            "protocolVersion": REQUESTED_PROTOCOL_VERSION,
             "capabilities": {},
             "clientInfo": { "name": "mcp-commerce-evals", "version": env!("CARGO_PKG_VERSION") },
         });
         let Exchange::Done(reply) = self.exchange("initialize", &params).await? else {
             return Err(Error::Protocol("initialize: HTTP 404".to_owned()));
         };
+        let negotiated = reply["protocolVersion"].as_str().unwrap_or_default();
+        self.protocol_header = SUPPORTED_PROTOCOL_VERSIONS
+            .into_iter()
+            .find(|supported| *supported == negotiated)
+            .ok_or_else(|| {
+                Error::Protocol(format!(
+                    "the server negotiated protocol version {negotiated:?}; this client supports {}",
+                    SUPPORTED_PROTOCOL_VERSIONS.join(", ")
+                ))
+            })?;
         self.handshake = ServerHandshake {
             server_info: reply["serverInfo"].clone(),
-            protocol_version: reply["protocolVersion"]
-                .as_str()
-                .unwrap_or_default()
-                .to_owned(),
+            protocol_version: negotiated.to_owned(),
         };
         self.notify("notifications/initialized").await
     }
@@ -96,7 +110,7 @@ impl McpClient {
         let _ = self
             .http
             .delete(&self.url)
-            .header("mcp-protocol-version", PROTOCOL_VERSION)
+            .header("mcp-protocol-version", self.protocol_header)
             .header("mcp-session-id", session)
             .send()
             .await;
@@ -155,7 +169,7 @@ impl McpClient {
             .http
             .post(&self.url)
             .header(ACCEPT, "application/json, text/event-stream")
-            .header("mcp-protocol-version", PROTOCOL_VERSION)
+            .header("mcp-protocol-version", self.protocol_header)
             .json(body);
         if let Some(session) = &self.session {
             request = request.header("mcp-session-id", session);
@@ -217,16 +231,71 @@ impl McpClient {
             return Ok(Exchange::SessionGone);
         }
         if !status.is_success() {
-            return Err(Error::Protocol(format!("{method}: HTTP {status}")));
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::Protocol(http_failure(method, status, &body)));
         }
         let is_stream = response
             .headers()
             .get("content-type")
             .and_then(|v| v.to_str().ok())
             .is_some_and(|v| v.starts_with("text/event-stream"));
-        let text = response.text().await?;
-        let message = parse_reply(&text, is_stream, id)?;
+        let message = if is_stream {
+            self.read_stream(response, id, method).await?
+        } else {
+            parse_reply(&response.text().await?, false, id)?
+        };
         reply_result(method, id, &message).map(Exchange::Done)
+    }
+
+    /// Reads an event stream chunk by chunk and returns the reply to `id` as soon as it is
+    /// complete, without waiting for the server to close the stream. A `ping` request from the
+    /// server on the way is answered; other server requests are not supported and are ignored.
+    async fn read_stream(
+        &self,
+        mut response: reqwest::Response,
+        id: u64,
+        method: &str,
+    ) -> Result<Value> {
+        let mut events = EventSplitter::default();
+        loop {
+            let chunk = response.chunk().await?;
+            let data = match &chunk {
+                Some(bytes) => events.push(bytes),
+                None => events.finish(),
+            };
+            for message in data
+                .iter()
+                .filter_map(|data| serde_json::from_str::<Value>(data).ok())
+            {
+                if message.get("method").is_none() && message["id"] == id {
+                    return Ok(message);
+                }
+                if message["method"] == "ping" && message.get("id").is_some() {
+                    // Best effort: a failed pong must not hide the reply we are waiting for.
+                    let _ = self
+                        .post(&json!({ "jsonrpc": "2.0", "id": message["id"], "result": {} }))
+                        .send()
+                        .await;
+                }
+            }
+            if chunk.is_none() {
+                return Err(Error::Protocol(format!(
+                    "{method}: the event stream ended without a reply with id {id}"
+                )));
+            }
+        }
+    }
+}
+
+/// The failure text for a non-2xx reply: the status, plus the JSON-RPC error message when the
+/// body carries one, since that is what says why.
+fn http_failure(method: &str, status: reqwest::StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|v| v["error"]["message"].as_str().map(str::to_owned));
+    match detail {
+        Some(message) => format!("{method}: HTTP {status}: {message}"),
+        None => format!("{method}: HTTP {status}"),
     }
 }
 
@@ -279,12 +348,12 @@ fn reply_result(method: &str, id: u64, message: &Value) -> Result<Value> {
         .ok_or_else(|| Error::Protocol(format!("{method}: the reply has neither result nor error")))
 }
 
-/// The data of each server-sent event: its `data:` lines joined with newlines, as the SSE
-/// format defines, so a JSON message split over several lines parses.
-fn event_data(body: &str) -> Vec<String> {
+/// The data of each server-sent event in `text`: its `data:` lines joined with newlines, as the
+/// SSE format defines, so a JSON message split over several lines parses.
+fn event_data(text: &str) -> Vec<String> {
     let mut events = Vec::new();
     let mut current: Vec<&str> = Vec::new();
-    for line in body.lines() {
+    for line in text.lines() {
         if line.is_empty() {
             if !current.is_empty() {
                 events.push(current.join("\n"));
@@ -300,10 +369,52 @@ fn event_data(body: &str) -> Vec<String> {
     events
 }
 
-/// The JSON-RPC reply with `id` inside a server-sent-event body.
+/// Cuts a byte stream into server-sent events as chunks arrive. Bytes are buffered until a blank
+/// line closes an event, so neither a split UTF-8 character nor a split line is misread.
+#[derive(Default)]
+struct EventSplitter {
+    buffer: Vec<u8>,
+}
+
+impl EventSplitter {
+    /// Adds a chunk and returns the data of every event it completed.
+    fn push(&mut self, chunk: &[u8]) -> Vec<String> {
+        self.buffer.extend_from_slice(chunk);
+        let mut out = Vec::new();
+        while let Some((end, separator)) = event_end(&self.buffer) {
+            let block: Vec<u8> = self.buffer.drain(..end + separator).take(end).collect();
+            out.extend(event_data(&String::from_utf8_lossy(&block)));
+        }
+        out
+    }
+
+    /// The data of a last event the server did not close with a blank line.
+    fn finish(&mut self) -> Vec<String> {
+        let rest = std::mem::take(&mut self.buffer);
+        event_data(&String::from_utf8_lossy(&rest))
+    }
+}
+
+/// Where the first complete event in `buffer` ends, and how long its blank-line separator is.
+fn event_end(buffer: &[u8]) -> Option<(usize, usize)> {
+    let find = |separator: &[u8]| {
+        buffer
+            .windows(separator.len())
+            .position(|w| w == separator)
+            .map(|at| (at, separator.len()))
+    };
+    match (find(b"\n\n"), find(b"\r\n\r\n")) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a, b) => a.or(b),
+    }
+}
+
+/// The JSON-RPC reply with `id` inside a complete server-sent-event body.
 fn find_in_stream(body: &str, id: u64) -> Result<Value> {
-    event_data(body)
-        .iter()
+    let mut events = EventSplitter::default();
+    let mut data = events.push(body.as_bytes());
+    data.extend(events.finish());
+    data.iter()
         .filter_map(|data| serde_json::from_str::<Value>(data).ok())
         .find(|message| message["id"] == id)
         .ok_or_else(|| Error::Protocol(format!("no reply with id {id} in the event stream")))
@@ -327,6 +438,33 @@ mod tests {
         let body = "event: message\ndata: {\"jsonrpc\":\"2.0\",\ndata: \"id\":4,\ndata: \"result\":{\"ok\":true}}\n\n";
         let message = find_in_stream(body, 4).unwrap();
         assert_eq!(message["result"]["ok"], true);
+    }
+
+    #[test]
+    fn events_split_across_chunks_and_inside_a_character_are_reassembled() {
+        let mut events = EventSplitter::default();
+        let bytes =
+            "data: {\"id\":1,\"result\":\"caf\u{e9}\"}\r\n\r\ndata: {\"id\":2}\n\n".as_bytes();
+        let cut = bytes.iter().position(|b| *b == 0xc3).unwrap() + 1;
+        assert_eq!(events.push(&bytes[..cut]), Vec::<String>::new());
+        let done = events.push(&bytes[cut..]);
+        assert_eq!(done, ["{\"id\":1,\"result\":\"caf\u{e9}\"}", "{\"id\":2}"]);
+        assert_eq!(events.push(b"data: {\"id\":3}"), Vec::<String>::new());
+        assert_eq!(events.finish(), ["{\"id\":3}"]);
+    }
+
+    #[test]
+    fn a_non_2xx_failure_names_the_status_and_the_rpc_message_when_there_is_one() {
+        let status = reqwest::StatusCode::BAD_REQUEST;
+        let rpc = r#"{"error":{"code":-32600,"message":"bad session"}}"#;
+        assert_eq!(
+            http_failure("m", status, rpc),
+            "m: HTTP 400 Bad Request: bad session"
+        );
+        assert_eq!(
+            http_failure("m", status, "<html>"),
+            "m: HTTP 400 Bad Request"
+        );
     }
 
     #[test]

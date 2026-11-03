@@ -817,6 +817,11 @@ fn rpc_ok(id: &Value, result: &Value, session: Option<&str>) -> Response {
     response
 }
 
+/// An `initialize` result that names a protocol version the client supports.
+fn initialized() -> Value {
+    json!({ "protocolVersion": "2025-06-18" })
+}
+
 fn sessions_sent(server: &Scripted, rpc: &str) -> Vec<Option<String>> {
     let seen = server.seen.lock().expect("lock");
     seen.iter()
@@ -828,7 +833,7 @@ fn sessions_sent(server: &Scripted, rpc: &str) -> Vec<Option<String>> {
 #[tokio::test]
 async fn a_session_id_that_is_not_text_keeps_the_previous_one() {
     let (server, scripted) = spawn_scripted(|_, rpc, body, _| match rpc {
-        Some("initialize") => rpc_ok(&body["id"], &json!({}), Some("s1")),
+        Some("initialize") => rpc_ok(&body["id"], &initialized(), Some("s1")),
         Some("tools/list") => {
             let mut response = rpc_ok(&body["id"], &json!({ "tools": [] }), None);
             response.headers_mut().insert(
@@ -857,7 +862,7 @@ async fn a_forgotten_session_is_reopened_once_and_the_request_retried() {
     let (server, scripted) = spawn_scripted(|_, rpc, body, session| match (rpc, session) {
         (Some("initialize"), _) => {
             let fresh = if body["id"] == 1 { "old" } else { "new" };
-            rpc_ok(&body["id"], &json!({}), Some(fresh))
+            rpc_ok(&body["id"], &initialized(), Some(fresh))
         }
         (Some("tools/list"), Some("old")) => StatusCode::NOT_FOUND.into_response(),
         (Some("tools/list"), Some("new")) => {
@@ -891,7 +896,7 @@ async fn closing_deletes_the_session_and_tolerates_a_405() {
                 .into_response();
             }
             match rpc {
-                Some("initialize") => rpc_ok(&body["id"], &json!({}), Some("s9")),
+                Some("initialize") => rpc_ok(&body["id"], &initialized(), Some("s9")),
                 _ => StatusCode::ACCEPTED.into_response(),
             }
         })
