@@ -530,7 +530,7 @@ async fn forwarded_addresses_are_ignored_unless_trusted() {
 
 fn public_host() -> StoreConfig {
     StoreConfig {
-        allowed_hosts: vec!["shop.example.org".to_owned()],
+        allowed_hosts: vec!["shop.example.org".parse().expect("a valid host")],
         ..StoreConfig::default()
     }
 }
@@ -580,4 +580,34 @@ async fn a_browser_origin_must_be_on_the_allowed_host_list() {
 async fn a_request_without_an_origin_header_is_still_served() {
     let store = start(public_host()).await;
     assert_eq!(store.rpc_with_headers(&[]).await, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn clients_past_the_tracking_table_share_a_larger_overflow_budget() {
+    let store = start(StoreConfig {
+        max_tracked_clients: 1,
+        ..behind_a_proxy(2)
+    })
+    .await;
+    let from = |address: &'static str| {
+        let store = &store;
+        async move {
+            store
+                .rpc_with_headers(&[("x-forwarded-for", address)])
+                .await
+        }
+    };
+    // The first client takes the only table slot and gets its own budget of 2.
+    assert_eq!(from("203.0.113.1").await, StatusCode::OK);
+    assert_eq!(from("203.0.113.1").await, StatusCode::OK);
+    assert_eq!(from("203.0.113.1").await, StatusCode::TOO_MANY_REQUESTS);
+    // Every other client lands in the overflow bucket: ten times a client's budget, shared.
+    let others = ["203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"];
+    for n in 0..20 {
+        let status = from(others[n % others.len()]).await;
+        assert_eq!(status, StatusCode::OK, "overflow request {n}");
+    }
+    assert_eq!(from("203.0.113.6").await, StatusCode::TOO_MANY_REQUESTS);
+    // The tracked client's refusal does not depend on the flood, and health is never limited.
+    assert_eq!(from("203.0.113.1").await, StatusCode::TOO_MANY_REQUESTS);
 }

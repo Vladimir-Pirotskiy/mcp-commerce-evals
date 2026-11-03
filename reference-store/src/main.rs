@@ -6,7 +6,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use reference_store::{StoreConfig, app, serve};
+use reference_store::{AllowedHost, StoreConfig, app, serve_until};
 use tokio::net::TcpListener;
 
 /// Serve the demo bicycle-parts catalog to AI assistants over MCP (Streamable HTTP).
@@ -21,7 +21,7 @@ struct Args {
     checkout_url: String,
     /// Extra Host header value to accept (repeatable); required behind a public hostname.
     #[arg(long = "allowed-host")]
-    allowed_hosts: Vec<String>,
+    allowed_hosts: Vec<AllowedHost>,
     /// Requests per client per minute on /mcp.
     #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u32).range(1..))]
     requests_per_minute: u32,
@@ -32,6 +32,12 @@ struct Args {
     /// X-Forwarded-For entry that many places from the right.
     #[arg(long, default_value = "1", requires = "trust_forwarded_for")]
     trusted_proxy_hops: NonZeroUsize,
+    /// Most /mcp requests handled at once; more get 503 with Retry-After.
+    #[arg(long, default_value_t = 256, value_parser = clap::value_parser!(u32).range(1..))]
+    max_in_flight: u32,
+    /// Seconds one /mcp request may take before it gets 504.
+    #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..))]
+    request_timeout_secs: u64,
     /// Seed of the generated catalog.
     #[arg(long, default_value_t = catalog::DEMO_SEED)]
     seed: u64,
@@ -61,6 +67,9 @@ async fn run(args: Args) -> std::io::Result<()> {
         requests_per_minute: args.requests_per_minute,
         trust_forwarded_for: args.trust_forwarded_for,
         trusted_proxy_hops: args.trusted_proxy_hops,
+        max_in_flight: args.max_in_flight as usize,
+        request_timeout: std::time::Duration::from_secs(args.request_timeout_secs),
+        ..StoreConfig::default()
     };
     let catalog = Arc::new(
         catalog::Catalog::new(catalog::generate(args.seed, args.parts))
@@ -70,10 +79,34 @@ async fn run(args: Args) -> std::io::Result<()> {
         "reference-store: {} parts, MCP endpoint http://{local}/mcp",
         catalog.parts().len()
     );
-    let server = serve(listener, app(catalog, &config));
+    serve_until(listener, app(catalog, &config), shutdown_signal()).await?;
+    println!("reference-store: shut down");
+    Ok(())
+}
+
+/// Completes on ctrl-c, or on SIGTERM where there is one, which is what a container runtime or
+/// a process manager sends to stop a service.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        // If the handler cannot be installed, never complete on this branch.
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                sigterm.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
     tokio::select! {
-        result = server => result,
-        _ = tokio::signal::ctrl_c() => Ok(()),
+        () = ctrl_c => {}
+        () = terminate => {}
     }
 }
 
@@ -85,6 +118,17 @@ mod tests {
     fn a_zero_request_budget_is_rejected() {
         let refused = Args::try_parse_from(["reference-store", "--requests-per-minute", "0"]);
         assert!(refused.is_err());
+    }
+
+    #[test]
+    fn an_allowed_host_with_a_scheme_or_path_fails_at_startup() {
+        for bad in ["https://shop.example.org", "shop.example.org/mcp", ""] {
+            let refused = Args::try_parse_from(["reference-store", "--allowed-host", bad]);
+            assert!(refused.is_err(), "{bad:?}");
+        }
+        let ok =
+            Args::try_parse_from(["reference-store", "--allowed-host", "shop.example.org:8443"]);
+        assert!(ok.is_ok());
     }
 
     #[test]

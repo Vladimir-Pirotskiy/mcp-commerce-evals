@@ -7,6 +7,7 @@
 mod api;
 mod cart;
 mod error;
+mod guard;
 mod hosts;
 mod input;
 mod rate_limit;
@@ -27,8 +28,10 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use serde_json::json;
 use tokio::net::TcpListener;
 
+pub use hosts::{AllowedHost, InvalidHost};
 pub use tools::ReferenceStore;
 
+use guard::GuardState;
 use rate_limit::{LimitState, RateLimiter};
 
 /// How the store is deployed.
@@ -40,7 +43,7 @@ pub struct StoreConfig {
     /// deployment, otherwise the MCP endpoint answers 403. Browser `Origin` headers are accepted
     /// from the same hosts (any scheme, any port unless the entry names one) and refused with 403
     /// otherwise; requests without an `Origin` are not affected.
-    pub allowed_hosts: Vec<String>,
+    pub allowed_hosts: Vec<AllowedHost>,
     /// Requests per client per minute on `/mcp`.
     pub requests_per_minute: u32,
     /// Name clients by `X-Forwarded-For` instead of the socket address (behind a proxy only).
@@ -49,6 +52,13 @@ pub struct StoreConfig {
     /// the entry that many places from the right of `X-Forwarded-For`; the client controls
     /// everything to its left.
     pub trusted_proxy_hops: NonZeroUsize,
+    /// Most clients the rate limiter tracks one by one. Beyond that, new clients share one
+    /// overflow budget of ten times a client's limit (see the `rate_limit` module notes).
+    pub max_tracked_clients: usize,
+    /// Most `/mcp` requests handled at once; a request over the cap gets 503 with `Retry-After`.
+    pub max_in_flight: usize,
+    /// How long one `/mcp` request may take before it gets 504.
+    pub request_timeout: Duration,
 }
 
 impl Default for StoreConfig {
@@ -59,6 +69,9 @@ impl Default for StoreConfig {
             requests_per_minute: 120,
             trust_forwarded_for: false,
             trusted_proxy_hops: NonZeroUsize::MIN,
+            max_tracked_clients: rate_limit::MAX_CLIENTS,
+            max_in_flight: 256,
+            request_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -80,7 +93,8 @@ fn mcp_config(config: &StoreConfig) -> StreamableHttpServerConfig {
         .with_allowed_origins(origins)
 }
 
-/// The store's HTTP application: `/mcp` (rate limited) and `/health`.
+/// The store's HTTP application: `/mcp` (rate limited, capped in flight, with a deadline) and
+/// `/health`.
 pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     let checkout_base: Arc<str> = Arc::from(config.checkout_url.trim_end_matches('/'));
     let service = StreamableHttpService::new(
@@ -89,9 +103,10 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
         mcp_config(config),
     );
     let limit = LimitState {
-        limiter: Arc::new(RateLimiter::new(
+        limiter: Arc::new(RateLimiter::with_capacity(
             config.requests_per_minute,
             Duration::from_secs(60),
+            config.max_tracked_clients,
         )),
         trusted_proxy_hops: config
             .trust_forwarded_for
@@ -99,6 +114,10 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     };
     let mcp = Router::new()
         .nest_service("/mcp", service)
+        .layer(from_fn_with_state(
+            GuardState::new(config.max_in_flight, config.request_timeout),
+            guard::guard,
+        ))
         .layer(from_fn_with_state(limit, rate_limit::limit));
     Router::new()
         .route("/health", get(|| async { Json(json!({ "status": "ok" })) }))
@@ -111,9 +130,24 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
 ///
 /// Fails when the underlying server stops with an I/O error.
 pub async fn serve(listener: TcpListener, app: Router) -> std::io::Result<()> {
+    serve_until(listener, app, std::future::pending()).await
+}
+
+/// Serves `app` on `listener` until `shutdown` completes, then stops accepting connections and
+/// lets requests in flight finish before returning.
+///
+/// # Errors
+///
+/// Fails when the underlying server stops with an I/O error.
+pub async fn serve_until(
+    listener: TcpListener,
+    app: Router,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown)
     .await
 }

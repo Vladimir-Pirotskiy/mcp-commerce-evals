@@ -9,6 +9,24 @@
 //! That burst is bounded by 2x, which is fine for protecting a demo server; a sliding window or
 //! token bucket would remove it at the cost of per-client state.
 //!
+//! # When the table is full
+//!
+//! Once [`MAX_CLIENTS`] distinct clients are tracked, every further client is counted in one
+//! shared overflow bucket until a sweep frees slots. The bucket has its own budget,
+//! [`OVERFLOW_FACTOR`] (10) times a single client's limit per window, because it stands in for
+//! many clients, not one. The alternatives and what each costs:
+//!
+//! - Evicting a tracked client to make room lets an attacker who rotates addresses push real
+//!   clients out and reset their counters, which defeats the limit exactly when it matters.
+//! - Admitting untracked clients without counting fails open under the very flood the table
+//!   bound exists for.
+//! - A shared bucket fails closed: total traffic from untracked clients is bounded, at the price
+//!   that during an address flood newcomers compete for one budget and some get 429 although they
+//!   did nothing wrong. Tracked clients are unaffected. For a demo server that trade is the right
+//!   one; a production limiter would keep this state in an external store.
+//!
+//! # Where it runs
+//!
 //! The limiter wraps the MCP service, and the `Host` and `Origin` checks run inside that service
 //! (rmcp does not expose them as a separate layer), so a request refused for its `Host` or
 //! `Origin` still spends one unit of its client's budget.
@@ -27,6 +45,10 @@ use axum::response::{IntoResponse, Response};
 /// Most distinct clients tracked at once. Further clients share one overflow budget until an
 /// expired window frees a slot.
 pub const MAX_CLIENTS: usize = 10_000;
+
+/// The overflow budget is this many times a single client's limit per window. See the module
+/// documentation for why it is larger, and what it costs.
+pub const OVERFLOW_FACTOR: u32 = 10;
 
 /// Bits of an IPv6 address that name a client: one subscriber usually owns a whole /64.
 const IPV6_PREFIX_BITS: u32 = 64;
@@ -56,6 +78,7 @@ struct Table {
 /// Allows `limit` requests per client in each `window`.
 pub struct RateLimiter {
     limit: u32,
+    overflow_limit: u32,
     window: Duration,
     max_clients: usize,
     table: Mutex<Table>,
@@ -63,14 +86,17 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     /// A limiter that allows `limit` requests per client per `window`.
+    #[cfg(test)]
     pub fn new(limit: u32, window: Duration) -> Self {
         Self::with_capacity(limit, window, MAX_CLIENTS)
     }
 
-    fn with_capacity(limit: u32, window: Duration, max_clients: usize) -> Self {
+    /// Like [`RateLimiter::new`], tracking at most `max_clients` clients individually.
+    pub fn with_capacity(limit: u32, window: Duration, max_clients: usize) -> Self {
         let now = Instant::now();
         Self {
             limit,
+            overflow_limit: limit.saturating_mul(OVERFLOW_FACTOR),
             window,
             max_clients,
             table: Mutex::new(Table {
@@ -94,19 +120,19 @@ impl RateLimiter {
         let Table {
             clients, overflow, ..
         } = &mut *table;
-        let slot = if clients.contains_key(&client) || clients.len() < self.max_clients {
-            clients.entry(client).or_insert_with(|| Window::new(now))
+        if clients.contains_key(&client) || clients.len() < self.max_clients {
+            let slot = clients.entry(client).or_insert_with(|| Window::new(now));
+            self.count(slot, self.limit, now)
         } else {
-            overflow
-        };
-        self.count(slot, now)
+            self.count(overflow, self.overflow_limit, now)
+        }
     }
 
-    fn count(&self, slot: &mut Window, now: Instant) -> Result<(), Duration> {
+    fn count(&self, slot: &mut Window, limit: u32, now: Instant) -> Result<(), Duration> {
         if now.duration_since(slot.start) >= self.window {
             *slot = Window::new(now);
         }
-        if slot.used >= self.limit {
+        if slot.used >= limit {
             return Err(self.window.saturating_sub(now.duration_since(slot.start)));
         }
         slot.used += 1;
@@ -235,13 +261,17 @@ mod tests {
         let t0 = Instant::now();
         assert!(limiter.check(ip("10.0.0.1"), t0).is_ok());
         assert!(limiter.check(ip("10.0.0.2"), t0).is_ok());
+        for n in 0..OVERFLOW_FACTOR {
+            let client = ip(&format!("10.0.1.{n}"));
+            assert!(limiter.check(client, t0).is_ok(), "overflow request {n}");
+        }
         assert!(
-            limiter.check(ip("10.0.0.3"), t0).is_ok(),
-            "first overflow client"
+            limiter.check(ip("10.0.2.1"), t0).is_err(),
+            "the shared budget of {OVERFLOW_FACTOR} is spent"
         );
         assert!(
-            limiter.check(ip("10.0.0.4"), t0).is_err(),
-            "shares the overflow budget"
+            limiter.check(ip("10.0.0.1"), t0).is_err(),
+            "tracked clients keep their own, smaller budget"
         );
         let table = limiter.table.lock().expect("lock");
         assert_eq!(table.clients.len(), 2, "the table did not grow");
