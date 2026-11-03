@@ -73,9 +73,7 @@ without an `Origin`, which is every non-browser client, are served.
 - ChatGPT: enable Developer mode, create an app, paste the same URL. ChatGPT accepts remote HTTPS
   servers only.
 
-Menu names change between releases; check each vendor's current connector documentation. I ran the
-store and the evals locally. I did not test a connection from Claude Code, Claude or ChatGPT: the
-hosted ones need a public hostname, which this repo does not provide.
+Menu names change between releases; check each vendor's current connector documentation.
 
 ## The store's tools
 
@@ -99,11 +97,24 @@ result does not contain, and what to do next. Errors come back as tool errors (`
 with a message that says how to recover, for example "Copy ids from search_products results".
 
 Limits: 120 requests per client per minute on `/mcp` (429 with `Retry-After`; change it with
-`--requests-per-minute`, which must be at least 1), at most 10,000 clients tracked (more share one
-budget until a window expires), `/health` is not limited. The window is fixed, not sliding, so a client can spend its budget at
-the end of one window and again at the start of the next: up to twice the limit within a window's
-length. The rate limit runs before the `Host` and
-`Origin` checks, so a request refused for either still counts against its client. Inputs: a query
+`--requests-per-minute`, which must be at least 1), `/health` is not limited. The window is
+fixed, not sliding, so a client can spend its budget at the end of one window and again at the
+start of the next: up to twice the limit within a window's length. The rate limit runs before the
+`Host` and `Origin` checks, so a request refused for either still counts against its client.
+
+At most 10,000 clients are tracked one by one. Further clients share a single overflow bucket
+with its own budget, ten times one client's limit per window. The trade-off: evicting tracked
+clients to make room would let someone rotating addresses reset real clients' counters, and
+admitting untracked clients uncounted would fail open under exactly that flood. A shared bucket
+fails closed, bounding all untracked traffic, at the price that during an address flood newcomers
+share one budget and some get 429 undeservedly; tracked clients are unaffected. The reasoning is
+in the `rate_limit` module docs.
+
+`/mcp` also sheds load: at most 256 requests are handled at once (`--max-in-flight`; more get 503
+with `Retry-After`) and a request that runs past 30 seconds (`--request-timeout-secs`) gets 504.
+The store stops on ctrl-c or SIGTERM, finishing requests already in flight.
+`--allowed-host` takes a bare host with an optional port (`shop.example.org:8443`); a scheme, a
+path or other junk is refused at startup. Inputs: a query
 is at most 200 characters and 20 words, `limit` is 1 to 25 and anything else is refused, `brand`,
 each `fits` entry and every part id are at most 100 characters, `fits` takes at most 10 non-empty
 entries, a request body is at most 64 KiB, and carts take at most 20 lines. A part sent on several
@@ -111,8 +122,10 @@ cart lines counts once with the lines added up: the total must fit the shelf and
 
 ## How the evals work
 
-`evals/queries.json` holds 40 buyer queries. Each has an id, a kind, the text a buyer would type
-and the part ids that count as a correct answer (any one of them is enough).
+`evals/queries.json` holds 44 buyer queries. Each has an id, a kind, the text a buyer would type
+and the part ids that count as a correct answer (any one of them is enough). The four `no_match`
+queries are the exception: they ask for things the catalog does not sell, `expected` is `[]`, and
+validation allows an empty list for that kind only.
 
 | Kind | n | Example |
 |---|---:|---|
@@ -123,12 +136,13 @@ and the part ids that count as a correct answer (any one of them is enough).
 | synonym | 6 | the buyer's word is not the catalog's word |
 | filter | 6 | "11-speed chain, in stock, under $30" |
 | adversarial | 1 | q06 types the letter O for a zero in a part number |
+| no_match | 4 | "a bicycle helmet in size medium": the catalog sells no such thing, so the right answer is none |
 
 The expected ids come from catalog attributes (every chain with `speed = 11-speed`, in stock, under
 $30), never from running the search, so the search cannot mark its own homework. That claim is
 checkable: `evals/tests/expected_sets.rs` holds one plain predicate per query (attributes, brand,
 price, stock) and asserts that the ids it selects from the seeded catalog equal the ones in
-`queries.json`. It never calls the search. Run it with
+`queries.json`, and that each `no_match` rule selects no part at all. It never calls the search. Run it with
 `cargo test -p mcp-commerce-evals --test expected_sets`.
 
 A filter query also carries a `search` object, the arguments an assistant would build from the
@@ -149,9 +163,13 @@ and overall:
 - hit@1 and hit@5: share of queries with an expected part in the first 1 or 5 results, each with a
   95% Wilson interval;
 - MRR: mean of 1 / rank of the best expected part, 0 when it is not in the top 10;
-- recall@10: share of a query's expected ids found in the top 10, averaged over queries (a query
-  with 17 expected ids cannot reach 1.0 at `--top-k 5`);
+- capped recall@10: expected ids found in the top 10 divided by min(number expected, 10), averaged
+  over queries, so a query with 17 expected ids can still reach 1.0 (plain recall would cap it at
+  10/17); with a smaller `--top-k` the ceiling is lower;
 - nDCG@10 with binary relevance;
+- 95% bootstrap intervals for MRR, recall@10 and nDCG@10: 2000 resamples of the per-query scores
+  with a fixed seed (a local SplitMix64, recorded in `meta.bootstrap_seed`), so the same results
+  always give the same interval;
 - latency: p50 and p95 of the round trip, nearest-rank in integer arithmetic, errors excluded.
   `--repeat N` times each query N times after one untimed warm-up call.
 
@@ -160,19 +178,32 @@ under `results`, `products`, `items` or `hits`, or that is neither structured co
 text, is an error for that query, not an empty result. Use `--search-tool` for a store whose tool
 has another name; each entry's id is read from `id`, `sku`, `part_number` or `product_id`.
 
+`no_match` queries are reported in their own line (how many returned nothing, how many results
+on average) and are excluded from every hit, MRR, nDCG and recall aggregate, including the "all"
+rows; they cannot be ranked. Whether a store should return nothing or a weak guess is a product
+choice, so the tool level only describes it. At the assistant level they count: see below.
+
 `--kind <kind>` (repeatable) runs only queries of those kinds; the report's `meta` records them.
 
 The process exits 0 on success, 1 when the run could not complete, 2 when any query errored (in
-the tool-level or the assistant-level run) and 3 when a gate was not met: `--min-hit5 <f64>` and `--min-mrr <f64>` compare against the "all" row
-and the failed gate is printed. The JSON report is written first, and `--out` refuses to replace an
+the tool-level or the assistant-level run) and 3 when a gate was not met: `--min-hit5 <f64>` and
+`--min-mrr <f64>` compare against the "all" row, `--min-accuracy <f64>` against the
+assistant-level share of correct committed answers (it needs `--assistant`), and the failed gate
+is printed. A run whose report is incomplete exits 1. `--top-k` takes 1 to 100, `--max-turns` 1 to
+50 and `--repeat` at least 1; other values are refused before any request. The JSON report is written first, and `--out` refuses to replace an
 existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
 the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
 the server's `serverInfo` and negotiated protocol version, and for assistant runs the model,
 temperature (null when none was sent), `max_turns` and a hash of the system prompt.
 `--timeout-secs` (default 60) bounds every HTTP request, to the store and to the model API. The MCP
-client reads JSON and event-stream replies, carries a session id when the server issues one,
-opens a new session once if the server answers 404 to it, and ends the session with a DELETE
-(a 405 is fine) when the run completes.
+client reads JSON and event-stream replies (an event stream is read as it arrives, and the call
+returns when the reply to its request does, even if the server keeps the stream open), answers a
+server `ping` seen in the stream, carries a session id when the server issues one, opens a new
+session once if the server answers 404 to it, and ends the session with a DELETE (a 405 is fine)
+when the run completes. It sends the `mcp-protocol-version` the server negotiated (2025-11-25,
+2025-06-18 or 2025-03-26) and fails with a clear message on any other. On a non-2xx reply the error
+carries the JSON-RPC message from the body when there is one. Server-initiated requests other
+than `ping` (sampling, roots) are not supported.
 
 **Assistant-level (optional, costs tokens).** `--assistant anthropic` gives a model the store's
 tools through the Anthropic Messages API and lets it work until it answers, at most `--max-turns`
@@ -189,34 +220,34 @@ refuses an empty `ANTHROPIC_API_KEY` before any request. Accuracy is reported ov
 and over the queries without API errors, next to the error count. The report adds tool calls per
 query and input and output tokens, which is where a store with vague tool descriptions shows up:
 the model needs more calls to get to the same answer. The report file is rewritten after every
-query, with `"complete": false` until the end, so a paid run that fails midway leaves its partial
+run, with `"complete": false` until the end, so a paid run that fails midway leaves its partial
 results.
+
+For a `no_match` query the only correct committed answer is `ANSWER: none`; for every other query
+`none` is wrong. Accuracy carries a 95% Wilson interval. `--trials N` runs each query N times and
+reports the mean accuracy and pass@k for k = 1..N with the unbiased estimator (the chance that at
+least one of k runs drawn from the N is right). The Wilson interval treats the runs as
+independent, which repeated runs of the same 44 queries are not, so with several trials it is
+narrower than the truth; read pass@k and the per-query rows instead. The report records the
+`model` id the API returned in its replies next to the alias that was requested. The client also
+retries a request timeout or a failed connect, with the same backoff and limit as an HTTP 429.
 
 ```sh
 export ANTHROPIC_API_KEY=...        # read from the environment only, never from argv
 cargo run --release -p mcp-commerce-evals -- --assistant anthropic --model claude-haiku-5-5
 ```
 
-The loop is tested against a mock of the API (tool call, tool result, the committed answer, each
-stop reason, a 429 that is retried, a 401 whose message must not contain the key, a request
-timeout, token counts, no `temperature` by default). A short live smoke run against
-`claude-haiku-5-5` found that the API answers HTTP 400 "`temperature` is deprecated for this
-model" when the parameter is sent, which is why it is now opt-in. I have not checked that the API
-accepts the `$schema` field the store's input schemas carry, and no assistant-level numbers are
-published here.
-
-The store itself was checked with a real MCP client on 2026-11-03: Claude Code (`claude -p`, Haiku,
-the store as its only server through `--mcp-config`) was asked for "an 11-speed chain that is in
-stock and under 30 dollars" and a cart. It searched, checked stock and returned a cart with
-`FER-CH-4296` at $24.99, an expected answer, in 5 turns. That run found that the client warned on
-every `uint32` and `double` format schemars writes for Rust numbers; the store now drops them
-(`schemas_use_only_standard_formats` in `reference-store/tests/http.rs`).
+The loop is tested against a mock of the API: tool call, tool result, the committed answer, each
+stop reason, retries, a 401 whose message must not contain the key, a request timeout, token
+counts and trials.
 
 ## Results
 
+### Tool-level results
+
 Tool-level run on 2026-11-03, release build, store and CLI on the same machine (Apple M4 Max,
-64 GiB, macOS 27.2), loopback, one run of 40 queries, `--top-k 10`, `--repeat 1`, build of git
-commit `5c5b3f1` (its `meta` block is in the file):
+64 GiB, macOS 27.2), loopback, one run of 44 queries (40 ranked, 4 `no_match`), `--top-k 10`, `--repeat 1`, build of git
+this commit's parent (its `meta` block is in the file):
 
 ```sh
 cargo build --release --workspace
@@ -225,24 +256,25 @@ cargo build --release --workspace
   --out results/tool-level-2026-11-03.json
 ```
 
-Intervals are 95% Wilson; p50 and p95 are milliseconds.
+Hit intervals are 95% Wilson; recall, nDCG and MRR intervals are seeded 95% bootstrap; p50 and
+p95 are milliseconds. The file is `results/tool-level-2026-11-03.json`.
 
-| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 | nDCG@10 | MRR | p50 ms | p95 ms |
+| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 (95% CI) | nDCG@10 (95% CI) | MRR (95% CI) | p50 ms | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 | 0.30 | 0.11 | 0.26 | 0.26 |
-| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.87 | 0.89 | 0.89 | 0.33 | 0.52 |
-| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 | 1.00 | 1.00 | 0.46 | 0.70 |
-| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 | 0.83 | 0.83 | 0.25 | 0.40 |
-| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 | 0.94 | 0.92 | 0.31 | 0.44 |
-| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 | 1.00 | 1.00 | 0.42 | 0.61 |
-| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 | 1.00 | 1.00 | 0.41 | 0.58 |
-| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.95 | 0.92 | 0.91 | 0.37 | 0.58 |
-| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.97 | 0.94 | 0.93 | 0.38 | 0.61 |
+| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (1.00-1.00) | 0.30 (0.30-0.30) | 0.11 (0.11-0.11) | 0.46 | 0.46 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (0.70-1.00) | 0.89 (0.67-1.00) | 0.89 (0.67-1.00) | 0.58 | 0.77 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.54 | 1.02 |
+| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.47 | 0.55 |
+| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (1.00-1.00) | 0.94 (0.81-1.00) | 0.92 (0.75-1.00) | 0.58 | 0.70 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.50 | 1.43 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.58 | 0.76 |
+| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.58 | 1.00 |
+| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.58 | 1.02 |
 
-The full per-query output is in `results/tool-level-2026-11-03.json`. The rankings are identical
-to the first run, `results/tool-level-2026-11-02.json`, which is kept: that file predates the
-`meta` block, the intervals and the changes to how replies are read, and it counts q06 under
-`exact_part_number`. Four queries were not ranked first:
+The four `no_match` queries returned 10 results each (the store always returns its best guesses)
+and are not in any row above.
+
+The full per-query output is in that file. Four queries were not ranked first:
 
 | id | query | rank | what happened |
 |---|---|---:|---|
@@ -251,7 +283,7 @@ to the first run, `results/tool-level-2026-11-02.json`, which is kept: that file
 | q22 | rear hub for a 12x142 thru axle frame with an 11-speed disc brake setup | 9 | Axle parts outrank hubs. |
 | q35 | 11-speed chain, in stock, under $30 | none | The `search` object says `query: "chain"` without a category, and chain lubes rank above chains. With `category: "chain"` the chains come first. |
 
-Read these numbers with care. 40 queries is small: one query moves a rate by 2.5 points, and the
+Read these numbers with care. 40 ranked queries is small: one query moves a rate by 2.5 points, and the
 intervals show how wide the uncertainty is, from 0.44 to 0.97 for a kind of six. The one
 adversarial query is a single data point, and its interval spans most of the scale. The catalog
 and the queries were written together, by the same person, so this shows that the harness
@@ -259,12 +291,18 @@ measures and that the store works; it does not rank search engines. Latency is a
 trip to an in-memory index, not a network or database figure, from one run after one warm-up
 call. Rankings are deterministic for a given seed; latency varies from run to run.
 
+### Assistant-level results
+
+Pending a full run.
+
 ## Development
 
 ```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings   # includes clippy::pedantic
 cargo test --workspace
+cargo doc --no-deps --workspace                          # with RUSTDOCFLAGS="-D warnings"
+cargo deny check licenses bans sources                   # offline; see deny.toml
 ```
 
 `Cargo.lock` is committed and holds only crate versions published before 2026-10-19, at least two
@@ -276,7 +314,7 @@ cargo +nightly generate-lockfile -Zunstable-options --publish-time 2026-10-19T00
 ```
 
 The tests need no network and no key. The integration test starts the store on a random port inside
-the test process and runs the whole tool-level eval against it, with a floor on hit@5 and MRR and
+the test process and runs the whole tool-level eval against it, with a floor on hit@5 and MRR (CI's eval job gates the same numbers with `--min-hit5 0.92 --min-mrr 0.91`) and
 a requirement that the first five queries (exact part numbers) rank first. Another test checks
 that every expected id exists in the demo catalog, and `expected_sets` rederives every expected set
 from catalog attributes. The assistant loop, the retries, the exit codes and the report metadata
@@ -296,6 +334,9 @@ are tested against mocks and the in-process store.
   work; I read the overview page of the spec, not its transport section.
 - `create_cart` does not take payment, addresses or buyer details. By design the human pays.
 - One run, one machine, one seed.
+- The store was exercised with a real MCP client (Claude Code) on a local address only; I did not test
+  a connection from the hosted assistants, which need a public hostname this repo does not provide.
+- The Messages API's acceptance of the `$schema` field in the store's input schemas is unchecked.
 
 ## License
 
