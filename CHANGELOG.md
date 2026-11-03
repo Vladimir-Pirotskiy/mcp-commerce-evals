@@ -6,6 +6,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-03
+
+### Fixed
+
+- The release binary read its default queries from a build-time absolute path, so it failed
+  outside a checkout. `queries.json` is now compiled in and used when `--queries` is not given;
+  `--queries <path>` still overrides, and `meta.queries_sha256` hashes the bytes the run used.
+- A 200 reply from the Messages API that is not JSON (or whose body cannot be read) was read as
+  an empty reply. The query now records an error and the run exits 2.
+- `MCP_EVALS_GIT_COMMIT` went stale after a commit on the same branch; the build script now
+  watches HEAD, the index, `packed-refs` and the checked-out ref, in linked worktrees too.
+- One `X-Forwarded-For` line that is not UTF-8 made the rate limiter name every client by the
+  proxy's address. Entries are counted on raw bytes and only the trusted entry must be UTF-8 and
+  an address; otherwise the client is named by the socket peer.
+- The client asked for protocol revision 2025-06-18 although it lists 2025-11-25 as supported;
+  it now asks for the newest revision it lists (the in-process store grants it).
+- The assistant table's count column is headed `runs`, because it counts runs, not queries.
+
+### Changed
+
+- The README is 163 lines; the store, evals and development reference and the result tables are
+  in `docs/`.
+- The README states the real dependency rule: a 14-day cooldown, with an exception for security
+  fixes (RUSTSEC-2026-0382 and -0383). Dependabot has `cooldown: default-days: 14` for both
+  ecosystems.
+- The release workflow checks out without persisting credentials, runs the tests before building,
+  smoke-tests the tarball from an empty directory, and publishes the CHANGELOG section of the tag's
+  version as the release notes.
+- The bootstrap interval test is pinned tightly enough to fail on another seed, and the 504 test
+  proves the handler future is dropped.
+
+### Security
+
+- `reference-store` closes a connection that has not sent its request line and headers within 10
+  seconds (`--header-read-timeout-secs`) and refuses connections beyond 1024 open
+  (`--max-connections`); before, a partial request stayed open indefinitely and idle connections
+  were unbounded. It now serves through hyper directly, with graceful shutdown kept.
+  `hyper` and `hyper-util` were already in the lockfile through axum.
+
 ## [0.1.0] - 2026-11-03
 
 First release.
@@ -73,5 +112,6 @@ First release.
 - A rate-limit table full of live clients was swept on every request from a new address; the
   sweep forced by a full table now runs at most once a second.
 
-[Unreleased]: https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/releases/tag/v0.1.0

@@ -185,7 +185,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 
 [[package]]
 name = "catalog"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "schemars",
  "serde",
@@ -919,7 +919,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp-commerce-evals"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "catalog",
@@ -1143,7 +1143,7 @@ dependencies = [
 
 [[package]]
 name = "reference-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "catalog",
