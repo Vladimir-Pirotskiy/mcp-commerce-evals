@@ -31,5 +31,9 @@ done
 [ -n "$url" ] || { echo "smoke: the store never printed its address" >&2; exit 1; }
 
 cd "$work/run"
-"$bundle/mcp-commerce-evals" --url "$url" --out report.json --min-hit5 0.92 --min-mrr 0.91
+if ! "$bundle/mcp-commerce-evals" --url "$url" --out report.json --min-hit5 0.92 --min-mrr 0.91; then
+  echo "smoke: the evals run failed; the last 50 lines of the store log:" >&2
+  tail -n 50 "$work/store.log" >&2
+  exit 1
+fi
 echo "smoke: ok ($url)"
