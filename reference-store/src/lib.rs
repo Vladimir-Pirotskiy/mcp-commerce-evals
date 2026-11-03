@@ -95,6 +95,24 @@ fn mcp_config(config: &StoreConfig) -> StreamableHttpServerConfig {
 
 /// The store's HTTP application: `/mcp` (rate limited, capped in flight, with a deadline) and
 /// `/health`.
+///
+/// ```
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// use std::sync::Arc;
+/// use reference_store::{StoreConfig, app, serve};
+///
+/// let catalog = Arc::new(catalog::demo_catalog());
+/// let router = app(catalog, &StoreConfig::default());
+/// let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+/// let address = listener.local_addr().unwrap();
+/// let server = tokio::spawn(serve(listener, router));
+///
+/// // `/health` answers without a session; `/mcp` speaks MCP over POST.
+/// let health = reqwest::get(format!("http://{address}/health")).await.unwrap();
+/// assert!(health.status().is_success());
+/// server.abort();
+/// # });
+/// ```
 pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     let checkout_base: Arc<str> = Arc::from(config.checkout_url.trim_end_matches('/'));
     let service = StreamableHttpService::new(
