@@ -395,3 +395,90 @@ async fn the_handshake_keeps_the_server_info_and_negotiated_protocol() {
     assert_eq!(handshake.server_info["name"], "mock-store");
     assert_eq!(handshake.protocol_version, "2025-03-26");
 }
+
+/// Runs the CLI binary against `base` and returns its exit code and stderr.
+async fn run_cli(base: &str, extra: &[&str], out: &Path) -> (i32, String) {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_mcp-commerce-evals"));
+    command
+        .args([
+            "--url",
+            &format!("{base}/mcp"),
+            "--queries",
+            QUERIES,
+            "--out",
+        ])
+        .arg(out)
+        .args(extra);
+    let output = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .expect("join")
+        .expect("run the binary");
+    (
+        output.status.code().expect("exit code"),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+fn scratch_file(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("mcp-evals-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create dir");
+    dir.join("report.json")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_zero_and_writes_the_report_when_gates_hold() {
+    let store = spawn_store().await;
+    let out = scratch_file("ok");
+
+    let (code, stderr) = run_cli(
+        &store.base,
+        &["--min-hit5", "0.5", "--min-mrr", "0.5"],
+        &out,
+    )
+    .await;
+
+    assert_eq!(code, 0, "{stderr}");
+    assert!(out.exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_3_after_writing_the_json_when_a_gate_is_not_met() {
+    let store = spawn_store().await;
+    let out = scratch_file("gate");
+
+    let (code, stderr) = run_cli(&store.base, &["--min-hit5", "1.0"], &out).await;
+
+    assert_eq!(code, 3);
+    assert!(stderr.contains("gate failed: hit5"), "{stderr}");
+    assert!(
+        out.exists(),
+        "the report is written before the gate decides"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_2_when_a_query_errors() {
+    let store = spawn_store().await;
+    let out = scratch_file("errors");
+
+    let (code, stderr) = run_cli(&store.base, &["--search-tool", "no_such_tool"], &out).await;
+
+    assert_eq!(code, 2, "{stderr}");
+    assert!(out.exists());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_refuses_to_overwrite_a_report_unless_forced() {
+    let store = spawn_store().await;
+    let out = scratch_file("force");
+    std::fs::write(&out, "keep me").expect("seed the file");
+
+    let (code, stderr) = run_cli(&store.base, &[], &out).await;
+    assert_eq!(code, 1);
+    assert!(stderr.contains("--force"), "{stderr}");
+    assert_eq!(std::fs::read_to_string(&out).expect("read"), "keep me");
+
+    let (code, stderr) = run_cli(&store.base, &["--force"], &out).await;
+    assert_eq!(code, 0, "{stderr}");
+    assert_ne!(std::fs::read_to_string(&out).expect("read"), "keep me");
+}

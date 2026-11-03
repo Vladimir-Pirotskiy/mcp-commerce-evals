@@ -1,6 +1,6 @@
 //! `mcp-commerce-evals`: score an MCP store's search tool, and optionally a model shopping on it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use clap::{Parser, ValueEnum};
 use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey};
 use mcp_commerce_evals::error::{Error, Result};
+use mcp_commerce_evals::gate::{self, Gates};
 use mcp_commerce_evals::mcp::McpClient;
 use mcp_commerce_evals::report::{EvalReport, assistant_markdown, tool_level_markdown};
 use mcp_commerce_evals::{queries, tool_level};
@@ -20,6 +21,9 @@ enum Provider {
 }
 
 /// Evaluate an MCP store: tool-level retrieval metrics, plus an optional assistant-level run.
+///
+/// Exit status: 0 on success, 1 when the run could not complete, 2 when any query errored, 3 when
+/// a --min-* gate was not met (the report is written first).
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
@@ -44,6 +48,15 @@ struct Args {
     /// Model for the assistant-level run.
     #[arg(long, default_value = assistant::DEFAULT_MODEL)]
     model: String,
+    /// Exit with status 3 when hit@5 over all queries is below this (0 to 1).
+    #[arg(long, value_parser = gate::parse_threshold)]
+    min_hit5: Option<f64>,
+    /// Exit with status 3 when MRR over all queries is below this (0 to 1).
+    #[arg(long, value_parser = gate::parse_threshold)]
+    min_mrr: Option<f64>,
+    /// Replace the report file if it already exists.
+    #[arg(long)]
+    force: bool,
     /// Seconds before an HTTP request to the store or the model API gives up.
     #[arg(long, default_value_t = 60)]
     timeout_secs: u64,
@@ -55,7 +68,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> ExitCode {
     match run(Args::parse()).await {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(status) => ExitCode::from(status),
         Err(error) => {
             eprintln!("mcp-commerce-evals: {error}");
             ExitCode::FAILURE
@@ -63,7 +76,8 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(args: Args) -> Result<()> {
+async fn run(args: Args) -> Result<u8> {
+    refuse_to_overwrite(&args.out, args.force)?;
     let queries = queries::load(&args.queries)?;
     // Read the key before any network traffic so a missing key fails fast.
     let api = match args.assistant {
@@ -109,5 +123,28 @@ async fn run(args: Args) -> Result<()> {
     std::fs::write(&args.out, json + "\n")
         .map_err(|e| Error::Input(format!("cannot write {}: {e}", args.out.display())))?;
     println!("\nJSON written to {}", args.out.display());
+    let gates = Gates {
+        min_hit5: args.min_hit5,
+        min_mrr: args.min_mrr,
+    };
+    let failures = gates.failures(&report.tool_level.overall);
+    for failure in &failures {
+        eprintln!("mcp-commerce-evals: {failure}");
+    }
+    let query_errors = report.tool_level.overall.errors;
+    if query_errors > 0 {
+        eprintln!("mcp-commerce-evals: {query_errors} queries errored");
+    }
+    Ok(gate::exit_status(query_errors, &failures))
+}
+
+/// Fails before any traffic when the report file exists and `--force` was not given.
+fn refuse_to_overwrite(out: &Path, force: bool) -> Result<()> {
+    if out.exists() && !force {
+        return Err(Error::Input(format!(
+            "{} exists; pass --force to replace it",
+            out.display()
+        )));
+    }
     Ok(())
 }
