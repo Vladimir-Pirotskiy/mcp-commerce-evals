@@ -1,12 +1,15 @@
 {
   "meta": {
     "crate_version": "0.1.0",
-    "git_commit": "5c5b3f1c3ba6cc0b226012c187736a4ac5af6c85",
-    "queries_sha256": "8f3dae81bfe7ef25c5ea3e1e25800cf2ff1f11663c53193f59d87273bd0a35ac",
+    "git_commit": "e0f398e3450a8329465d86db2261e64d31d0eece",
+    "queries_sha256": "4eea41e518223076a1695b9d5e1a060785d2277359643c0b4e941f5d5203a517",
     "top_k": 10,
     "repeat": 1,
     "search_tool": "search_products",
     "timeout_secs": 60,
+    "kinds": [],
+    "bootstrap_seed": 2316557763123961581,
+    "bootstrap_resamples": 2000,
     "server_info": {
       "name": "reference-store",
       "version": "0.1.0"
@@ -16,7 +19,7 @@
   },
   "store_url": "http://127.0.0.1:8787/mcp",
   "queries_file": "evals/queries.json",
-  "unix_time": 1793687462,
+  "unix_time": 1793692221,
   "complete": true,
   "tool_level": {
     "overall": {
@@ -32,13 +35,25 @@
         "high": 0.9741644432281419
       },
       "mrr": 0.913888888888889,
-      "recall_at_10": 0.9487745098039216,
+      "mrr_ci": {
+        "low": 0.825,
+        "high": 0.9833333333333332
+      },
+      "recall_at_10": 0.9550000000000001,
+      "recall_at_10_ci": {
+        "low": 0.885,
+        "high": 1.0
+      },
       "ndcg_at_10": 0.9232726251829331,
+      "ndcg_at_10_ci": {
+        "low": 0.8415710002574656,
+        "high": 0.9875
+      },
       "errors": 0,
       "latency_samples": 40,
-      "latency_p50_ms": 0.369917,
-      "latency_p95_ms": 0.583125,
-      "latency_mean_ms": 0.38408957499999996
+      "latency_p50_ms": 0.5640419999999999,
+      "latency_p95_ms": 1.142875,
+      "latency_mean_ms": 0.631892725
     },
     "overall_without_filter": {
       "n": 34,
@@ -53,13 +68,25 @@
         "high": 0.9837176869361576
       },
       "mrr": 0.9281045751633986,
-      "recall_at_10": 0.9691464821222607,
+      "mrr_ci": {
+        "low": 0.8431372549019607,
+        "high": 1.0
+      },
+      "recall_at_10": 0.9764705882352942,
+      "recall_at_10_ci": {
+        "low": 0.9294117647058823,
+        "high": 1.0
+      },
       "ndcg_at_10": 0.9391442649210977,
+      "ndcg_at_10_ci": {
+        "low": 0.8635826474892542,
+        "high": 1.0
+      },
       "errors": 0,
       "latency_samples": 34,
-      "latency_p50_ms": 0.379041,
-      "latency_p95_ms": 0.608875,
-      "latency_mean_ms": 0.3994828235294118
+      "latency_p50_ms": 0.5640419999999999,
+      "latency_p95_ms": 1.1837499999999999,
+      "latency_mean_ms": 0.6462095882352942
     },
     "by_kind": {
       "adversarial": {
@@ -75,13 +102,25 @@
           "high": 0.7934567085261071
         },
         "mrr": 0.1111111111111111,
+        "mrr_ci": {
+          "low": 0.1111111111111111,
+          "high": 0.1111111111111111
+        },
         "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "ndcg_at_10": 0.3010299956639812,
+        "ndcg_at_10_ci": {
+          "low": 0.3010299956639812,
+          "high": 0.3010299956639812
+        },
         "errors": 0,
         "latency_samples": 1,
-        "latency_p50_ms": 0.26120899999999997,
-        "latency_p95_ms": 0.26120899999999997,
-        "latency_mean_ms": 0.26120899999999997
+        "latency_p50_ms": 0.723875,
+        "latency_p95_ms": 0.723875,
+        "latency_mean_ms": 0.723875
       },
       "compatibility": {
         "n": 8,
@@ -96,13 +135,25 @@
           "high": 0.9775830911367038
         },
         "mrr": 0.8888888888888888,
-        "recall_at_10": 0.8688725490196078,
+        "mrr_ci": {
+          "low": 0.6666666666666666,
+          "high": 1.0
+        },
+        "recall_at_10": 0.9,
+        "recall_at_10_ci": {
+          "low": 0.7000000000000001,
+          "high": 1.0
+        },
         "ndcg_at_10": 0.8912343764566676,
+        "ndcg_at_10_ci": {
+          "low": 0.6737031293700028,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.329708,
-        "latency_p95_ms": 0.524291,
-        "latency_mean_ms": 0.38160412499999996
+        "latency_p50_ms": 0.5379999999999999,
+        "latency_p95_ms": 0.738583,
+        "latency_mean_ms": 0.547510375
       },
       "exact_part_number": {
         "n": 5,
@@ -117,13 +168,25 @@
           "high": 1.0
         },
         "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 5,
-        "latency_p50_ms": 0.4645,
-        "latency_p95_ms": 0.7035,
-        "latency_mean_ms": 0.46733340000000007
+        "latency_p50_ms": 0.430917,
+        "latency_p95_ms": 1.619084,
+        "latency_mean_ms": 0.724742
       },
       "filter": {
         "n": 6,
@@ -138,13 +201,25 @@
           "high": 0.9699474141282697
         },
         "mrr": 0.8333333333333334,
+        "mrr_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
         "recall_at_10": 0.8333333333333334,
+        "recall_at_10_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
         "ndcg_at_10": 0.8333333333333334,
+        "ndcg_at_10_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.248667,
-        "latency_p95_ms": 0.40037500000000004,
-        "latency_mean_ms": 0.2968611666666667
+        "latency_p50_ms": 0.425875,
+        "latency_p95_ms": 0.8187500000000001,
+        "latency_mean_ms": 0.5507638333333333
       },
       "plain_description": {
         "n": 8,
@@ -159,13 +234,25 @@
           "high": 1.0
         },
         "mrr": 0.9166666666666666,
+        "mrr_ci": {
+          "low": 0.7499999999999999,
+          "high": 1.0
+        },
         "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "ndcg_at_10": 0.9375,
+        "ndcg_at_10_ci": {
+          "low": 0.8125,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.30624999999999997,
-        "latency_p95_ms": 0.44425,
-        "latency_mean_ms": 0.325526
+        "latency_p50_ms": 0.5534589999999999,
+        "latency_p95_ms": 0.720708,
+        "latency_mean_ms": 0.56125525
       },
       "synonym": {
         "n": 6,
@@ -180,13 +267,25 @@
           "high": 0.9999999999999999
         },
         "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.416542,
-        "latency_p95_ms": 0.608875,
-        "latency_mean_ms": 0.438736
+        "latency_p50_ms": 0.549708,
+        "latency_p95_ms": 1.142875,
+        "latency_mean_ms": 0.6946804999999999
       },
       "typo": {
         "n": 6,
@@ -201,14 +300,32 @@
           "high": 0.9999999999999999
         },
         "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.411458,
-        "latency_p95_ms": 0.583125,
-        "latency_mean_ms": 0.4491805
+        "latency_p50_ms": 0.6604169999999999,
+        "latency_p95_ms": 1.1837499999999999,
+        "latency_mean_ms": 0.7642221666666668
       }
+    },
+    "no_match": {
+      "n": 4,
+      "errors": 0,
+      "empty_replies": 0,
+      "mean_results_returned": 10.0
     },
     "queries": [
       {
@@ -232,7 +349,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5761670000000001
+          0.430917
         ],
         "error": null
       },
@@ -257,7 +374,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.300375
+          0.39325
         ],
         "error": null
       },
@@ -273,7 +390,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.4645
+          0.271167
         ],
         "error": null
       },
@@ -298,7 +415,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.7035
+          1.619084
         ],
         "error": null
       },
@@ -323,7 +440,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.292125
+          0.909292
         ],
         "error": null
       },
@@ -348,7 +465,7 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.26120899999999997
+          0.723875
         ],
         "error": null
       },
@@ -373,7 +490,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.403584
+          0.619417
         ],
         "error": null
       },
@@ -399,7 +516,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.30624999999999997
+          0.457375
         ],
         "error": null
       },
@@ -424,7 +541,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.270917
+          0.366292
         ],
         "error": null
       },
@@ -450,7 +567,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.25804099999999996
+          0.5534589999999999
         ],
         "error": null
       },
@@ -477,7 +594,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.310375
+          0.601958
         ],
         "error": null
       },
@@ -505,7 +622,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.44425
+          0.4922079999999999
         ],
         "error": null
       },
@@ -532,7 +649,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.303
+          0.6786249999999999
         ],
         "error": null
       },
@@ -557,7 +674,7 @@
         ],
         "rank": 3,
         "latencies_ms": [
-          0.30779100000000004
+          0.720708
         ],
         "error": null
       },
@@ -588,7 +705,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.377875
+          0.5592499999999999
         ],
         "error": null
       },
@@ -615,7 +732,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.329708
+          0.6268330000000001
         ],
         "error": null
       },
@@ -641,7 +758,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.524291
+          0.5379999999999999
         ],
         "error": null
       },
@@ -671,7 +788,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.289208
+          0.472875
         ],
         "error": null
       },
@@ -701,7 +818,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.456959
+          0.5640419999999999
         ],
         "error": null
       },
@@ -737,7 +854,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.29854200000000003
+          0.4815
         ],
         "error": null
       },
@@ -763,7 +880,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.279708
+          0.399
         ],
         "error": null
       },
@@ -804,7 +921,7 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.496542
+          0.738583
         ],
         "error": null
       },
@@ -831,7 +948,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.391208
+          0.855541
         ],
         "error": null
       },
@@ -860,7 +977,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.43916700000000003
+          0.6604169999999999
         ],
         "error": null
       },
@@ -890,7 +1007,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.500208
+          0.685209
         ],
         "error": null
       },
@@ -920,7 +1037,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.411458
+          0.54325
         ],
         "error": null
       },
@@ -947,7 +1064,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.369917
+          1.1837499999999999
         ],
         "error": null
       },
@@ -978,7 +1095,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.583125
+          0.657166
         ],
         "error": null
       },
@@ -1006,7 +1123,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.49191700000000005
+          0.549708
         ],
         "error": null
       },
@@ -1031,7 +1148,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.608875
+          0.6824589999999999
         ],
         "error": null
       },
@@ -1058,7 +1175,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.416542
+          0.5354580000000001
         ],
         "error": null
       },
@@ -1089,7 +1206,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.379041
+          1.142875
         ],
         "error": null
       },
@@ -1120,7 +1237,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.284375
+          0.769625
         ],
         "error": null
       },
@@ -1150,7 +1267,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.45166599999999996
+          0.487958
         ],
         "error": null
       },
@@ -1177,7 +1294,7 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.40037500000000004
+          0.425875
         ],
         "error": null
       },
@@ -1204,7 +1321,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.30783299999999997
+          0.589375
         ],
         "error": null
       },
@@ -1230,7 +1347,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.248667
+          0.33475
         ],
         "error": null
       },
@@ -1254,7 +1371,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.330542
+          0.374083
         ],
         "error": null
       },
@@ -1281,7 +1398,7 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.24725000000000003
+          0.8187500000000001
         ],
         "error": null
       },
@@ -1300,7 +1417,99 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.24649999999999997
+          0.7617499999999999
+        ],
+        "error": null
+      },
+      {
+        "id": "q41",
+        "kind": "no_match",
+        "text": "a bicycle helmet in size medium",
+        "expected": [],
+        "returned": [
+          "ALD-RD-6453",
+          "COR-RD-4580",
+          "TAM-RD-1887",
+          "COR-RD-5032",
+          "ALD-RD-4363",
+          "ALD-RD-4913",
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "IRO-TR-8680"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.5796659999999999
+        ],
+        "error": null
+      },
+      {
+        "id": "q42",
+        "kind": "no_match",
+        "text": "floor pump with a pressure gauge",
+        "expected": [],
+        "returned": [
+          "PEL-SD-1698",
+          "NET-SD-4380",
+          "QUI-SD-1263",
+          "QUI-SD-7391",
+          "ROO-SD-2573",
+          "PEL-SD-8596",
+          "ROO-SD-6203",
+          "NET-SD-2674",
+          "OAK-SD-6198",
+          "QUI-SD-8038"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.824334
+        ],
+        "error": null
+      },
+      {
+        "id": "q43",
+        "kind": "no_match",
+        "text": "8-speed cassette for a vintage road bike",
+        "expected": [],
+        "returned": [
+          "BRK-CS-3163",
+          "FER-CS-3305",
+          "FER-CS-7201",
+          "BRK-CS-6641",
+          "DUN-CS-1759",
+          "DUN-CS-7254",
+          "GLE-CS-7483",
+          "DUN-CS-6237",
+          "FER-CS-9878",
+          "COR-CS-2303"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.8622080000000001
+        ],
+        "error": null
+      },
+      {
+        "id": "q44",
+        "kind": "no_match",
+        "text": "26-inch mountain bike tire",
+        "expected": [],
+        "returned": [
+          "IRO-TB-5183",
+          "PEL-TB-5613",
+          "IRO-TB-3418",
+          "IRO-TB-9593",
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "GLE-TR-3631",
+          "NET-TR-3899",
+          "FER-TR-3965"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.5772079999999999
         ],
         "error": null
       }

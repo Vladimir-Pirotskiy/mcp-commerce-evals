@@ -1,0 +1,2971 @@
+{
+  "meta": {
+    "crate_version": "0.1.0",
+    "git_commit": "e0f398e3450a8329465d86db2261e64d31d0eece",
+    "queries_sha256": "4eea41e518223076a1695b9d5e1a060785d2277359643c0b4e941f5d5203a517",
+    "top_k": 10,
+    "repeat": 1,
+    "search_tool": "search_products",
+    "timeout_secs": 60,
+    "kinds": [],
+    "bootstrap_seed": 2316557763123961581,
+    "bootstrap_resamples": 2000,
+    "server_info": {
+      "name": "reference-store",
+      "version": "0.1.0"
+    },
+    "protocol_version": "2025-06-18",
+    "assistant": {
+      "model": "claude-sonnet-5-5",
+      "temperature": null,
+      "max_turns": 8,
+      "trials": 1,
+      "system_prompt_sha256": "4a36b9a3da282898a9ac21ca588256fd54470e35a23518ba894fa1a240f47c54"
+    }
+  },
+  "store_url": "http://127.0.0.1:8787/mcp",
+  "queries_file": "evals/queries.json",
+  "unix_time": 1793693171,
+  "complete": true,
+  "tool_level": {
+    "overall": {
+      "n": 40,
+      "hit_at_1": 0.9,
+      "hit_at_1_ci": {
+        "low": 0.7694792561952611,
+        "high": 0.9604211124044252
+      },
+      "hit_at_5": 0.925,
+      "hit_at_5_ci": {
+        "low": 0.8013546984090248,
+        "high": 0.9741644432281419
+      },
+      "mrr": 0.913888888888889,
+      "mrr_ci": {
+        "low": 0.825,
+        "high": 0.9833333333333332
+      },
+      "recall_at_10": 0.9550000000000001,
+      "recall_at_10_ci": {
+        "low": 0.885,
+        "high": 1.0
+      },
+      "ndcg_at_10": 0.9232726251829331,
+      "ndcg_at_10_ci": {
+        "low": 0.8415710002574656,
+        "high": 0.9875
+      },
+      "errors": 0,
+      "latency_samples": 40,
+      "latency_p50_ms": 0.376417,
+      "latency_p95_ms": 0.502833,
+      "latency_mean_ms": 0.41574475
+    },
+    "overall_without_filter": {
+      "n": 34,
+      "hit_at_1": 0.9117647058823529,
+      "hit_at_1_ci": {
+        "low": 0.7703918204763959,
+        "high": 0.9695346096956899
+      },
+      "hit_at_5": 0.9411764705882353,
+      "hit_at_5_ci": {
+        "low": 0.8090606311053629,
+        "high": 0.9837176869361576
+      },
+      "mrr": 0.9281045751633986,
+      "mrr_ci": {
+        "low": 0.8431372549019607,
+        "high": 1.0
+      },
+      "recall_at_10": 0.9764705882352942,
+      "recall_at_10_ci": {
+        "low": 0.9294117647058823,
+        "high": 1.0
+      },
+      "ndcg_at_10": 0.9391442649210977,
+      "ndcg_at_10_ci": {
+        "low": 0.8635826474892542,
+        "high": 1.0
+      },
+      "errors": 0,
+      "latency_samples": 34,
+      "latency_p50_ms": 0.38137499999999996,
+      "latency_p95_ms": 0.561125,
+      "latency_mean_ms": 0.44134555882352944
+    },
+    "by_kind": {
+      "adversarial": {
+        "n": 1,
+        "hit_at_1": 0.0,
+        "hit_at_1_ci": {
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "hit_at_5": 0.0,
+        "hit_at_5_ci": {
+          "low": 0.0,
+          "high": 0.7934567085261071
+        },
+        "mrr": 0.1111111111111111,
+        "mrr_ci": {
+          "low": 0.1111111111111111,
+          "high": 0.1111111111111111
+        },
+        "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "ndcg_at_10": 0.3010299956639812,
+        "ndcg_at_10_ci": {
+          "low": 0.3010299956639812,
+          "high": 0.3010299956639812
+        },
+        "errors": 0,
+        "latency_samples": 1,
+        "latency_p50_ms": 0.264125,
+        "latency_p95_ms": 0.264125,
+        "latency_mean_ms": 0.264125
+      },
+      "compatibility": {
+        "n": 8,
+        "hit_at_1": 0.875,
+        "hit_at_1_ci": {
+          "low": 0.5291051942301386,
+          "high": 0.9775830911367038
+        },
+        "hit_at_5": 0.875,
+        "hit_at_5_ci": {
+          "low": 0.5291051942301386,
+          "high": 0.9775830911367038
+        },
+        "mrr": 0.8888888888888888,
+        "mrr_ci": {
+          "low": 0.6666666666666666,
+          "high": 1.0
+        },
+        "recall_at_10": 0.9,
+        "recall_at_10_ci": {
+          "low": 0.7000000000000001,
+          "high": 1.0
+        },
+        "ndcg_at_10": 0.8912343764566676,
+        "ndcg_at_10_ci": {
+          "low": 0.6737031293700028,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 8,
+        "latency_p50_ms": 0.377791,
+        "latency_p95_ms": 2.38875,
+        "latency_mean_ms": 0.6548905
+      },
+      "exact_part_number": {
+        "n": 5,
+        "hit_at_1": 1.0,
+        "hit_at_1_ci": {
+          "low": 0.5655085052479191,
+          "high": 1.0
+        },
+        "hit_at_5": 1.0,
+        "hit_at_5_ci": {
+          "low": 0.5655085052479191,
+          "high": 1.0
+        },
+        "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 5,
+        "latency_p50_ms": 0.31283299999999997,
+        "latency_p95_ms": 0.40662499999999996,
+        "latency_mean_ms": 0.3147332
+      },
+      "filter": {
+        "n": 6,
+        "hit_at_1": 0.8333333333333334,
+        "hit_at_1_ci": {
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "hit_at_5": 0.8333333333333334,
+        "hit_at_5_ci": {
+          "low": 0.43649056343635395,
+          "high": 0.9699474141282697
+        },
+        "mrr": 0.8333333333333334,
+        "mrr_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
+        "recall_at_10": 0.8333333333333334,
+        "recall_at_10_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
+        "ndcg_at_10": 0.8333333333333334,
+        "ndcg_at_10_ci": {
+          "low": 0.5,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 6,
+        "latency_p50_ms": 0.267708,
+        "latency_p95_ms": 0.313209,
+        "latency_mean_ms": 0.27067350000000007
+      },
+      "plain_description": {
+        "n": 8,
+        "hit_at_1": 0.875,
+        "hit_at_1_ci": {
+          "low": 0.5291051942301386,
+          "high": 0.9775830911367038
+        },
+        "hit_at_5": 1.0,
+        "hit_at_5_ci": {
+          "low": 0.6755843804891231,
+          "high": 1.0
+        },
+        "mrr": 0.9166666666666666,
+        "mrr_ci": {
+          "low": 0.7499999999999999,
+          "high": 1.0
+        },
+        "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "ndcg_at_10": 0.9375,
+        "ndcg_at_10_ci": {
+          "low": 0.8125,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 8,
+        "latency_p50_ms": 0.314833,
+        "latency_p95_ms": 0.468458,
+        "latency_mean_ms": 0.357203125
+      },
+      "synonym": {
+        "n": 6,
+        "hit_at_1": 1.0,
+        "hit_at_1_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "hit_at_5": 1.0,
+        "hit_at_5_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 6,
+        "latency_p50_ms": 0.38137499999999996,
+        "latency_p95_ms": 0.413458,
+        "latency_mean_ms": 0.3891111666666667
+      },
+      "typo": {
+        "n": 6,
+        "hit_at_1": 1.0,
+        "hit_at_1_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "hit_at_5": 1.0,
+        "hit_at_5_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "mrr": 1.0,
+        "mrr_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "recall_at_10": 1.0,
+        "recall_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "ndcg_at_10": 1.0,
+        "ndcg_at_10_ci": {
+          "low": 1.0,
+          "high": 1.0
+        },
+        "errors": 0,
+        "latency_samples": 6,
+        "latency_p50_ms": 0.42812500000000003,
+        "latency_p95_ms": 0.561125,
+        "latency_mean_ms": 0.4560903333333333
+      }
+    },
+    "no_match": {
+      "n": 4,
+      "errors": 0,
+      "empty_replies": 0,
+      "mean_results_returned": 10.0
+    },
+    "queries": [
+      {
+        "id": "q01",
+        "kind": "exact_part_number",
+        "text": "FER-CH-4296",
+        "expected": [
+          "FER-CH-4296"
+        ],
+        "returned": [
+          "FER-CH-4296",
+          "FER-CH-4375",
+          "FER-CH-1581",
+          "FER-CH-8047",
+          "FER-CH-1028",
+          "FER-CH-3521",
+          "FER-CH-1770",
+          "FER-CH-9388",
+          "ALD-CH-4466",
+          "BRK-CH-2510"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.354083
+        ],
+        "error": null
+      },
+      {
+        "id": "q02",
+        "kind": "exact_part_number",
+        "text": "brk-cs-3163",
+        "expected": [
+          "BRK-CS-3163"
+        ],
+        "returned": [
+          "BRK-CS-3163",
+          "BRK-CS-1522",
+          "BRK-CS-6641",
+          "BRK-CS-1782",
+          "FER-CS-3305",
+          "FER-CS-7201",
+          "GLE-CS-6563",
+          "DUN-CS-1759",
+          "FER-CS-5096",
+          "FER-CS-8488"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.31283299999999997
+        ],
+        "error": null
+      },
+      {
+        "id": "q03",
+        "kind": "exact_part_number",
+        "text": "DUNRT8582",
+        "expected": [
+          "DUN-RT-8582"
+        ],
+        "returned": [
+          "DUN-RT-8582"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.211792
+        ],
+        "error": null
+      },
+      {
+        "id": "q04",
+        "kind": "exact_part_number",
+        "text": "Do you have part QUI PD 5690?",
+        "expected": [
+          "QUI-PD-5690"
+        ],
+        "returned": [
+          "QUI-PD-5690",
+          "QUI-PD-5348",
+          "QUI-PD-5164",
+          "QUI-PD-5837",
+          "QUI-PD-2837",
+          "QUI-PD-2114",
+          "QUI-PD-9240",
+          "QUI-PD-7975",
+          "QUI-SD-9822",
+          "QUI-SD-5374"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.40662499999999996
+        ],
+        "error": null
+      },
+      {
+        "id": "q05",
+        "kind": "exact_part_number",
+        "text": "I need ALD-GR-7369 grips",
+        "expected": [
+          "ALD-GR-7369"
+        ],
+        "returned": [
+          "ALD-GR-7369",
+          "ALD-GR-1889",
+          "ALD-GR-9553",
+          "ALD-GR-8346",
+          "ALD-GR-4781",
+          "ALD-GR-9285",
+          "ALD-GR-4733",
+          "ALD-GR-1208",
+          "ALD-GR-7510",
+          "ALD-GR-1443"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.288333
+        ],
+        "error": null
+      },
+      {
+        "id": "q06",
+        "kind": "adversarial",
+        "text": "STO-HT-1O64",
+        "expected": [
+          "STO-HT-1064"
+        ],
+        "returned": [
+          "STO-HT-1543",
+          "STO-HT-2998",
+          "STO-HT-1605",
+          "STO-HT-4044",
+          "STO-HT-2901",
+          "STO-HT-3922",
+          "STO-HT-5677",
+          "STO-HT-2771",
+          "STO-HT-1064",
+          "PEL-HT-5482"
+        ],
+        "rank": 9,
+        "latencies_ms": [
+          0.264125
+        ],
+        "error": null
+      },
+      {
+        "id": "q07",
+        "kind": "plain_description",
+        "text": "Pellmoor Tour 175mm flat saddle with chromoly rails",
+        "expected": [
+          "PEL-SD-5881"
+        ],
+        "returned": [
+          "PEL-SD-5881",
+          "PEL-SD-9726",
+          "PEL-SD-4078",
+          "PEL-SD-1698",
+          "NET-SD-7636",
+          "QUI-SD-9822",
+          "ROO-SD-6057",
+          "PEL-SD-2712",
+          "QUI-SD-1231",
+          "PEL-SD-2723"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.293792
+        ],
+        "error": null
+      },
+      {
+        "id": "q08",
+        "kind": "plain_description",
+        "text": "white cork handlebar tape",
+        "expected": [
+          "ROO-HT-8751",
+          "STO-HT-1064"
+        ],
+        "returned": [
+          "ROO-HT-8751",
+          "STO-HT-1064",
+          "PEL-HT-5482",
+          "STO-HT-1605",
+          "QUI-HT-2595",
+          "QUI-HT-8368",
+          "STO-HT-3922",
+          "STO-HT-5677",
+          "ROO-HT-4695",
+          "PEL-HT-4650"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.267417
+        ],
+        "error": null
+      },
+      {
+        "id": "q09",
+        "kind": "plain_description",
+        "text": "34mm grey lock-on grips",
+        "expected": [
+          "ALD-GR-7369"
+        ],
+        "returned": [
+          "ALD-GR-7369",
+          "ALD-GR-4733",
+          "ROO-GR-9469",
+          "QUI-GR-4688",
+          "TAM-GR-4420",
+          "QUI-GR-2511",
+          "ALD-GR-1208",
+          "QUI-GR-4010",
+          "TAM-GR-3148",
+          "ALD-GR-1443"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.31375000000000003
+        ],
+        "error": null
+      },
+      {
+        "id": "q10",
+        "kind": "plain_description",
+        "text": "wet chain lube in the 250ml bottle",
+        "expected": [
+          "BRK-LU-2562",
+          "COR-LU-6752"
+        ],
+        "returned": [
+          "COR-LU-6752",
+          "BRK-LU-2562",
+          "GLE-LU-9777",
+          "COR-LU-3403",
+          "COR-LU-8294",
+          "COR-LU-7436",
+          "BRK-LU-2593",
+          "FER-LU-6256",
+          "DUN-LU-7540",
+          "DUN-LU-6630"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.314833
+        ],
+        "error": null
+      },
+      {
+        "id": "q11",
+        "kind": "plain_description",
+        "text": "clipless road pedals with a magnesium body",
+        "expected": [
+          "PEL-PD-3208",
+          "QUI-PD-9240",
+          "ROO-PD-9710"
+        ],
+        "returned": [
+          "QUI-PD-9240",
+          "ROO-PD-9710",
+          "PEL-PD-3208",
+          "PEL-PD-1758",
+          "PEL-PD-9332",
+          "QUI-PD-2114",
+          "QUI-PD-7975",
+          "QUI-PD-5690",
+          "PEL-PD-5692",
+          "OAK-PD-5131"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.355875
+        ],
+        "error": null
+      },
+      {
+        "id": "q12",
+        "kind": "plain_description",
+        "text": "160mm centerlock rotor, 1.8mm thick",
+        "expected": [
+          "DUN-RT-6069",
+          "DUN-RT-8582",
+          "GLE-RT-8524",
+          "NET-RT-4588"
+        ],
+        "returned": [
+          "GLE-RT-8524",
+          "DUN-RT-8582",
+          "DUN-RT-6069",
+          "NET-RT-4588",
+          "GLE-RT-5123",
+          "IRO-RT-6069",
+          "DUN-RT-4893",
+          "DUN-RT-4238",
+          "DUN-RT-4436",
+          "GLE-RT-3481"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.468458
+        ],
+        "error": null
+      },
+      {
+        "id": "q13",
+        "kind": "plain_description",
+        "text": "tubeless-ready gravel tire, 650b, 50c wide",
+        "expected": [
+          "FER-TR-7882",
+          "IRO-TR-3021",
+          "OAK-TR-2100"
+        ],
+        "returned": [
+          "FER-TR-7882",
+          "IRO-TR-3021",
+          "OAK-TR-2100",
+          "IRO-TR-5547",
+          "GLE-TR-6766",
+          "FER-TR-7555",
+          "OAK-TR-4523",
+          "NET-TR-3899",
+          "FER-TR-3965",
+          "NET-TR-4328"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.4165
+        ],
+        "error": null
+      },
+      {
+        "id": "q14",
+        "kind": "plain_description",
+        "text": "long-cage clutch rear derailleur for 12 speed",
+        "expected": [
+          "BRK-RD-3819"
+        ],
+        "returned": [
+          "STO-RD-5102",
+          "TAM-RD-7609",
+          "BRK-RD-3819",
+          "TAM-RD-3537",
+          "TAM-RD-5219",
+          "STO-RD-5966",
+          "ALD-RD-4363",
+          "STO-RD-1339",
+          "BRK-RD-8677",
+          "STO-RD-9412"
+        ],
+        "rank": 3,
+        "latencies_ms": [
+          0.42700000000000005
+        ],
+        "error": null
+      },
+      {
+        "id": "q15",
+        "kind": "compatibility",
+        "text": "a chain that fits my 11-speed road bike",
+        "expected": [
+          "ALD-CH-6403",
+          "ALD-CH-7566",
+          "BRK-CH-3285",
+          "BRK-CH-8063",
+          "FER-CH-1028",
+          "FER-CH-1581",
+          "FER-CH-4296"
+        ],
+        "returned": [
+          "FER-CH-4296",
+          "FER-CH-1581",
+          "ALD-CH-7566",
+          "ALD-CH-6403",
+          "BRK-CH-8063",
+          "FER-CH-1028",
+          "BRK-CH-3285",
+          "STO-RD-3530",
+          "FER-CS-7201",
+          "DUN-CS-6237"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.390042
+        ],
+        "error": null
+      },
+      {
+        "id": "q16",
+        "kind": "compatibility",
+        "text": "cassette for a 10-speed mountain bike",
+        "expected": [
+          "COR-CS-1779",
+          "COR-CS-7029",
+          "FER-CS-8488"
+        ],
+        "returned": [
+          "FER-CS-8488",
+          "COR-CS-7029",
+          "COR-CS-1779",
+          "GLE-CS-1545",
+          "GLE-CS-8177",
+          "DUN-CS-4950",
+          "GLE-CS-9351",
+          "FER-CS-9878",
+          "COR-CS-7109",
+          "BRK-CS-1522"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.377791
+        ],
+        "error": null
+      },
+      {
+        "id": "q17",
+        "kind": "compatibility",
+        "text": "rim brake pads for my road bike",
+        "expected": [
+          "GLE-BP-6003",
+          "GLE-BP-7931"
+        ],
+        "returned": [
+          "GLE-BP-7931",
+          "GLE-BP-6003",
+          "IRO-BP-8090",
+          "COR-BP-1796",
+          "FER-BP-1254",
+          "DUN-BP-5755",
+          "COR-BP-3346",
+          "IRO-BP-2992",
+          "DUN-BP-9251",
+          "FER-BP-4602"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.368708
+        ],
+        "error": null
+      },
+      {
+        "id": "q18",
+        "kind": "compatibility",
+        "text": "tires for my 29er mountain bike",
+        "expected": [
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "OAK-TR-7351",
+          "OAK-TR-9434"
+        ],
+        "returned": [
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "OAK-TR-7351",
+          "IRO-TB-4775",
+          "IRO-TB-6372",
+          "IRO-TB-8322",
+          "GLE-TB-2958"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          2.38875
+        ],
+        "error": null
+      },
+      {
+        "id": "q19",
+        "kind": "compatibility",
+        "text": "front thru axle for a 15x110 fork",
+        "expected": [
+          "COR-AX-3067",
+          "FER-AX-5956",
+          "FER-AX-9563",
+          "GLE-AX-7410",
+          "IRO-AX-4014",
+          "IRO-AX-6477"
+        ],
+        "returned": [
+          "GLE-AX-7410",
+          "FER-AX-5956",
+          "FER-AX-9563",
+          "IRO-AX-6477",
+          "COR-AX-3067",
+          "IRO-AX-4014",
+          "DUN-AX-3659",
+          "COR-AX-9847",
+          "IRO-AX-1880",
+          "COR-AX-2116"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.502833
+        ],
+        "error": null
+      },
+      {
+        "id": "q20",
+        "kind": "compatibility",
+        "text": "disc rotor that works on my e-bike",
+        "expected": [
+          "DUN-RT-4450",
+          "DUN-RT-6603",
+          "FER-RT-4268",
+          "GLE-RT-4402",
+          "GLE-RT-4867",
+          "GLE-RT-6445",
+          "IRO-RT-2114",
+          "IRO-RT-2241",
+          "IRO-RT-2893",
+          "IRO-RT-9800",
+          "NET-RT-5274",
+          "NET-RT-9974"
+        ],
+        "returned": [
+          "NET-RT-9974",
+          "IRO-RT-2893",
+          "GLE-RT-4867",
+          "DUN-RT-6603",
+          "NET-RT-5274",
+          "FER-RT-4268",
+          "GLE-RT-4402",
+          "IRO-RT-2114",
+          "GLE-RT-6445",
+          "DUN-RT-4450"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.369708
+        ],
+        "error": null
+      },
+      {
+        "id": "q21",
+        "kind": "compatibility",
+        "text": "chainring for a 12-speed road bike",
+        "expected": [
+          "STO-CR-3335",
+          "TAM-CR-8768"
+        ],
+        "returned": [
+          "TAM-CR-8768",
+          "STO-CR-3335",
+          "ALD-CR-9859",
+          "ROO-CR-9456",
+          "BRK-CR-5740",
+          "TAM-CR-8424",
+          "TAM-CR-6818",
+          "TAM-CR-7637",
+          "ROO-CR-1999",
+          "ROO-CR-2371"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.376417
+        ],
+        "error": null
+      },
+      {
+        "id": "q22",
+        "kind": "compatibility",
+        "text": "rear hub for a 12x142 thru axle frame with an 11-speed disc brake setup",
+        "expected": [
+          "DUN-HB-2260",
+          "DUN-HB-2395",
+          "DUN-HB-8286",
+          "DUN-HB-9287",
+          "DUN-HB-9686",
+          "FER-HB-5409",
+          "FER-HB-7703",
+          "GLE-HB-2115",
+          "GLE-HB-5923",
+          "IRO-HB-2282",
+          "IRO-HB-2460",
+          "IRO-HB-6346",
+          "IRO-HB-6727",
+          "IRO-HB-8272",
+          "IRO-HB-8472",
+          "NET-HB-3212",
+          "NET-HB-8250"
+        ],
+        "returned": [
+          "IRO-AX-1035",
+          "COR-AX-9329",
+          "GLE-AX-1417",
+          "GLE-AX-6976",
+          "DUN-AX-3873",
+          "COR-AX-5173",
+          "IRO-AX-1273",
+          "COR-AX-2499",
+          "NET-HB-3212",
+          "GLE-HB-5923"
+        ],
+        "rank": 9,
+        "latencies_ms": [
+          0.46487500000000004
+        ],
+        "error": null
+      },
+      {
+        "id": "q23",
+        "kind": "typo",
+        "text": "cassete 11-34T",
+        "expected": [
+          "DUN-CS-5327",
+          "DUN-CS-9273",
+          "GLE-CS-8177"
+        ],
+        "returned": [
+          "DUN-CS-5327",
+          "DUN-CS-9273",
+          "GLE-CS-8177",
+          "BRK-CS-3163",
+          "FER-CS-3305",
+          "FER-CS-7201",
+          "BRK-CS-1522",
+          "BRK-CS-6641",
+          "DUN-CS-1759",
+          "FER-CS-5096"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.415041
+        ],
+        "error": null
+      },
+      {
+        "id": "q24",
+        "kind": "typo",
+        "text": "chian lube wet",
+        "expected": [
+          "BRK-LU-2562",
+          "COR-LU-6752",
+          "DUN-LU-6630",
+          "DUN-LU-7540",
+          "FER-LU-6256"
+        ],
+        "returned": [
+          "FER-LU-6256",
+          "COR-LU-6752",
+          "DUN-LU-7540",
+          "DUN-LU-6630",
+          "BRK-LU-2562",
+          "FER-LU-9918",
+          "COR-LU-8153",
+          "GLE-LU-5251",
+          "DUN-LU-8626",
+          "GLE-LU-9777"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.392292
+        ],
+        "error": null
+      },
+      {
+        "id": "q25",
+        "kind": "typo",
+        "text": "bake pads disk resin",
+        "expected": [
+          "COR-BP-3373",
+          "COR-BP-4662",
+          "COR-BP-4956",
+          "COR-BP-6183",
+          "DUN-BP-3223",
+          "FER-BP-4602"
+        ],
+        "returned": [
+          "FER-BP-4602",
+          "COR-BP-6183",
+          "DUN-BP-3223",
+          "COR-BP-4956",
+          "COR-BP-3373",
+          "COR-BP-4662",
+          "GLE-BP-7931",
+          "IRO-BP-8090",
+          "COR-BP-1796",
+          "FER-BP-1254"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.561125
+        ],
+        "error": null
+      },
+      {
+        "id": "q26",
+        "kind": "typo",
+        "text": "derailer 11 speed",
+        "expected": [
+          "ALD-RD-7183",
+          "COR-RD-1126",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "STO-RD-3843",
+          "TAM-RD-1887"
+        ],
+        "returned": [
+          "ALD-RD-7183",
+          "TAM-RD-1887",
+          "COR-RD-1126",
+          "STO-RD-3843",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "FER-CH-4296",
+          "FER-CH-1581",
+          "ALD-CH-7566",
+          "ALD-CH-6403"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.442959
+        ],
+        "error": null
+      },
+      {
+        "id": "q27",
+        "kind": "typo",
+        "text": "bottel cage carbon",
+        "expected": [
+          "COR-BC-3731",
+          "COR-BC-4802",
+          "TAM-BC-3373"
+        ],
+        "returned": [
+          "TAM-BC-3373",
+          "COR-BC-4802",
+          "COR-BC-3731",
+          "ALD-BC-9129",
+          "ALD-BC-3559",
+          "ALD-BC-6319",
+          "BRK-BC-8681",
+          "TAM-BC-5209",
+          "DUN-BC-9771",
+          "BRK-BC-3960"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.42812500000000003
+        ],
+        "error": null
+      },
+      {
+        "id": "q28",
+        "kind": "typo",
+        "text": "pedles clipless mountian",
+        "expected": [
+          "OAK-PD-5088",
+          "OAK-PD-9685",
+          "PEL-PD-1758",
+          "PEL-PD-9332",
+          "QUI-PD-2837",
+          "ROO-PD-2433",
+          "STO-PD-8237"
+        ],
+        "returned": [
+          "QUI-PD-2837",
+          "OAK-PD-5088",
+          "ROO-PD-2433",
+          "OAK-PD-9685",
+          "PEL-PD-1758",
+          "PEL-PD-9332",
+          "STO-PD-8237",
+          "QUI-PD-2114",
+          "QUI-PD-9240",
+          "ROO-PD-9710"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.49700000000000005
+        ],
+        "error": null
+      },
+      {
+        "id": "q29",
+        "kind": "synonym",
+        "text": "tyre 29x2.4",
+        "expected": [
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "IRO-TR-5575",
+          "OAK-TR-9434"
+        ],
+        "returned": [
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "NET-TR-8235",
+          "IRO-TR-8680",
+          "OAK-TR-7894",
+          "IRO-TR-9248",
+          "GLE-TR-3631",
+          "FER-TR-7555"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.386
+        ],
+        "error": null
+      },
+      {
+        "id": "q30",
+        "kind": "synonym",
+        "text": "cogset 10-speed 10-51",
+        "expected": [
+          "COR-CS-1779"
+        ],
+        "returned": [
+          "COR-CS-1779",
+          "COR-CS-4153",
+          "COR-CS-6717",
+          "FER-CS-8488",
+          "BRK-CS-1782",
+          "COR-CS-8963",
+          "TAM-RD-3170",
+          "GLE-CS-1545",
+          "GLE-CS-8177",
+          "DUN-CS-4950"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.37708400000000003
+        ],
+        "error": null
+      },
+      {
+        "id": "q31",
+        "kind": "synonym",
+        "text": "headlight 1000 lumen",
+        "expected": [
+          "ALD-LT-1222",
+          "ALD-LT-6004",
+          "FER-LT-2757"
+        ],
+        "returned": [
+          "ALD-LT-6004",
+          "ALD-LT-1222",
+          "FER-LT-2757",
+          "FER-LT-8234",
+          "BRK-LT-5870",
+          "FER-LT-9492",
+          "BRK-LT-9065",
+          "FER-LT-4514",
+          "COR-LT-6270",
+          "COR-LT-8477"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.38137499999999996
+        ],
+        "error": null
+      },
+      {
+        "id": "q32",
+        "kind": "synonym",
+        "text": "lubricant for dry conditions",
+        "expected": [
+          "BRK-LU-3806",
+          "COR-LU-3403",
+          "COR-LU-8153",
+          "DUN-LU-8626",
+          "FER-LU-9918",
+          "GLE-LU-5251",
+          "GLE-LU-9777"
+        ],
+        "returned": [
+          "FER-LU-9918",
+          "COR-LU-8153",
+          "GLE-LU-5251",
+          "DUN-LU-8626",
+          "GLE-LU-9777",
+          "BRK-LU-3806",
+          "COR-LU-3403",
+          "FER-LU-6256",
+          "COR-LU-6752",
+          "DUN-LU-7540"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.40049999999999997
+        ],
+        "error": null
+      },
+      {
+        "id": "q33",
+        "kind": "synonym",
+        "text": "skewer for my road bike",
+        "expected": [
+          "COR-AX-6864",
+          "COR-AX-9660",
+          "DUN-AX-2395",
+          "FER-AX-5464",
+          "FER-AX-6449",
+          "GLE-AX-7603",
+          "IRO-AX-3844"
+        ],
+        "returned": [
+          "IRO-AX-3844",
+          "DUN-AX-2395",
+          "GLE-AX-7603",
+          "FER-AX-6449",
+          "FER-AX-5464",
+          "COR-AX-9660",
+          "COR-AX-6864",
+          "DUN-AX-3659",
+          "COR-AX-9847",
+          "IRO-AX-1880"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.37625000000000003
+        ],
+        "error": null
+      },
+      {
+        "id": "q34",
+        "kind": "synonym",
+        "text": "mech for 11 speed",
+        "expected": [
+          "ALD-RD-7183",
+          "COR-RD-1126",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "STO-RD-3843",
+          "TAM-RD-1887"
+        ],
+        "returned": [
+          "ALD-RD-7183",
+          "TAM-RD-1887",
+          "COR-RD-1126",
+          "STO-RD-3843",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "FER-CH-4296",
+          "FER-CH-1581",
+          "ALD-CH-7566",
+          "ALD-CH-6403"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.413458
+        ],
+        "error": null
+      },
+      {
+        "id": "q35",
+        "kind": "filter",
+        "text": "11-speed chain, in stock, under $30",
+        "expected": [
+          "ALD-CH-7566",
+          "FER-CH-1581",
+          "FER-CH-4296"
+        ],
+        "returned": [
+          "FER-LU-6256",
+          "FER-LU-9918",
+          "COR-LU-8153",
+          "GLE-LU-5251",
+          "COR-LU-6752",
+          "DUN-LU-8626",
+          "DUN-LU-7540",
+          "GLE-LU-9777",
+          "BRK-LU-3806",
+          "COR-LU-3403"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.313209
+        ],
+        "error": null
+      },
+      {
+        "id": "q36",
+        "kind": "filter",
+        "text": "disc brake pads under $20 that I can get now",
+        "expected": [
+          "FER-BP-1307",
+          "GLE-BP-6058",
+          "GLE-BP-7644"
+        ],
+        "returned": [
+          "GLE-BP-7644",
+          "GLE-BP-6058",
+          "FER-BP-1307",
+          "GLE-BP-7931",
+          "IRO-BP-8090",
+          "QUI-CB-1444",
+          "QUI-CB-4297",
+          "OAK-CB-4010",
+          "NET-CB-6062",
+          "NET-CB-2172"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.279708
+        ],
+        "error": null
+      },
+      {
+        "id": "q37",
+        "kind": "filter",
+        "text": "carbon rail saddle under $60",
+        "expected": [
+          "QUI-SD-8038",
+          "ROO-SD-2573"
+        ],
+        "returned": [
+          "ROO-SD-2573",
+          "QUI-SD-8038",
+          "TAM-BC-3373",
+          "COR-BC-4802",
+          "COR-BC-3731",
+          "NET-SD-7636",
+          "PEL-SD-5881",
+          "PEL-SD-9726",
+          "QUI-SD-9141",
+          "OAK-SD-2343"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.241333
+        ],
+        "error": null
+      },
+      {
+        "id": "q38",
+        "kind": "filter",
+        "text": "in-stock 29in tire under $30",
+        "expected": [
+          "NET-TR-8235",
+          "OAK-TR-9434"
+        ],
+        "returned": [
+          "OAK-TR-9434",
+          "NET-TR-8235",
+          "IRO-TB-4775",
+          "IRO-TB-6372",
+          "IRO-TB-8322",
+          "GLE-TB-2958",
+          "GLE-TB-1559",
+          "OAK-TB-7156"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.267708
+        ],
+        "error": null
+      },
+      {
+        "id": "q39",
+        "kind": "filter",
+        "text": "any Ferrowick rear light I can buy today",
+        "expected": [
+          "FER-LT-5825",
+          "FER-LT-7106",
+          "FER-LT-7619"
+        ],
+        "returned": [
+          "FER-LT-5825",
+          "FER-LT-7619",
+          "FER-LT-7106",
+          "FER-LT-8234",
+          "FER-LT-9492",
+          "FER-LT-4514",
+          "FER-LT-6736",
+          "FER-AX-6449",
+          "FER-AX-5464",
+          "FER-HB-5228"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.268625
+        ],
+        "error": null
+      },
+      {
+        "id": "q40",
+        "kind": "filter",
+        "text": "presta inner tube for 700c, in stock, under $8",
+        "expected": [
+          "GLE-TB-6418",
+          "IRO-TB-5411"
+        ],
+        "returned": [
+          "IRO-TB-5411",
+          "GLE-TB-6418",
+          "NET-TB-6565"
+        ],
+        "rank": 1,
+        "latencies_ms": [
+          0.253458
+        ],
+        "error": null
+      },
+      {
+        "id": "q41",
+        "kind": "no_match",
+        "text": "a bicycle helmet in size medium",
+        "expected": [],
+        "returned": [
+          "ALD-RD-6453",
+          "COR-RD-4580",
+          "TAM-RD-1887",
+          "COR-RD-5032",
+          "ALD-RD-4363",
+          "ALD-RD-4913",
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "IRO-TR-8680"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.40558299999999997
+        ],
+        "error": null
+      },
+      {
+        "id": "q42",
+        "kind": "no_match",
+        "text": "floor pump with a pressure gauge",
+        "expected": [],
+        "returned": [
+          "PEL-SD-1698",
+          "NET-SD-4380",
+          "QUI-SD-1263",
+          "QUI-SD-7391",
+          "ROO-SD-2573",
+          "PEL-SD-8596",
+          "ROO-SD-6203",
+          "NET-SD-2674",
+          "OAK-SD-6198",
+          "QUI-SD-8038"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.498125
+        ],
+        "error": null
+      },
+      {
+        "id": "q43",
+        "kind": "no_match",
+        "text": "8-speed cassette for a vintage road bike",
+        "expected": [],
+        "returned": [
+          "BRK-CS-3163",
+          "FER-CS-3305",
+          "FER-CS-7201",
+          "BRK-CS-6641",
+          "DUN-CS-1759",
+          "DUN-CS-7254",
+          "GLE-CS-7483",
+          "DUN-CS-6237",
+          "FER-CS-9878",
+          "COR-CS-2303"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.429542
+        ],
+        "error": null
+      },
+      {
+        "id": "q44",
+        "kind": "no_match",
+        "text": "26-inch mountain bike tire",
+        "expected": [],
+        "returned": [
+          "IRO-TB-5183",
+          "PEL-TB-5613",
+          "IRO-TB-3418",
+          "IRO-TB-9593",
+          "OAK-TR-9434",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "GLE-TR-3631",
+          "NET-TR-3899",
+          "FER-TR-3965"
+        ],
+        "rank": null,
+        "latencies_ms": [
+          0.34475
+        ],
+        "error": null
+      }
+    ]
+  },
+  "assistant_level": {
+    "model": "claude-sonnet-5-5",
+    "response_models": [
+      "claude-sonnet-5-5"
+    ],
+    "trials": 1,
+    "pass_at_k": [
+      {
+        "k": 1,
+        "value": 0.9772727272727273
+      }
+    ],
+    "temperature": null,
+    "overall": {
+      "n": 44,
+      "answer_accuracy": 0.9772727272727273,
+      "answer_accuracy_ci": {
+        "low": 0.8819202086846235,
+        "high": 0.9959768516143629
+      },
+      "answer_accuracy_without_errors": 0.9772727272727273,
+      "mentions_expected": 0.9090909090909091,
+      "unanswered": 0,
+      "errors": 0,
+      "mean_tool_calls": 2.0681818181818183,
+      "input_tokens": 473526,
+      "output_tokens": 19703
+    },
+    "by_kind": {
+      "adversarial": {
+        "n": 1,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.20654329147389294,
+          "high": 1.0
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 4.0,
+        "input_tokens": 15318,
+        "output_tokens": 590
+      },
+      "compatibility": {
+        "n": 8,
+        "answer_accuracy": 0.875,
+        "answer_accuracy_ci": {
+          "low": 0.5291051942301386,
+          "high": 0.9775830911367038
+        },
+        "answer_accuracy_without_errors": 0.875,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 2.375,
+        "input_tokens": 94324,
+        "output_tokens": 4390
+      },
+      "exact_part_number": {
+        "n": 5,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.5655085052479191,
+          "high": 1.0
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 1.8,
+        "input_tokens": 35770,
+        "output_tokens": 1140
+      },
+      "filter": {
+        "n": 6,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 1.1666666666666667,
+        "input_tokens": 45297,
+        "output_tokens": 2551
+      },
+      "no_match": {
+        "n": 4,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.5100999795960008,
+          "high": 1.0
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 0.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 3.0,
+        "input_tokens": 58661,
+        "output_tokens": 1552
+      },
+      "plain_description": {
+        "n": 8,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.6755843804891231,
+          "high": 1.0
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 2.5,
+        "input_tokens": 101691,
+        "output_tokens": 3338
+      },
+      "synonym": {
+        "n": 6,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 2.1666666666666665,
+        "input_tokens": 71747,
+        "output_tokens": 2934
+      },
+      "typo": {
+        "n": 6,
+        "answer_accuracy": 1.0,
+        "answer_accuracy_ci": {
+          "low": 0.6096569663469354,
+          "high": 0.9999999999999999
+        },
+        "answer_accuracy_without_errors": 1.0,
+        "mentions_expected": 1.0,
+        "unanswered": 0,
+        "errors": 0,
+        "mean_tool_calls": 1.1666666666666667,
+        "input_tokens": 50718,
+        "output_tokens": 3208
+      }
+    },
+    "queries": [
+      {
+        "id": "q01",
+        "kind": "exact_part_number",
+        "text": "FER-CH-4296",
+        "expected": [
+          "FER-CH-4296"
+        ],
+        "final_answer": "The Ferrowick Pro 11-Speed Chain (FER-CH-4296) is a zinc-coated 112-link chain for 11-speed drivetrains. It comes with a reusable quick link and fits road, gravel and mountain bikes. It costs $24.99, and 43 are in stock.\n\nIf you'd like to buy it, tell me the quantity and I'll create a cart for you.\n\nANSWER: FER-CH-4296",
+        "committed": "FER-CH-4296",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "get_product"
+        ],
+        "turns": 2,
+        "input_tokens": 6190,
+        "output_tokens": 199,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q02",
+        "kind": "exact_part_number",
+        "text": "brk-cs-3163",
+        "expected": [
+          "BRK-CS-3163"
+        ],
+        "final_answer": "That part number is the Brackenridge Race 9-Speed 11-28T road cassette. It costs $56.49, and 45 are in stock. It has a standard freehub and fits 9-speed road drivetrains.\n\nIf you'd like to buy it, tell me how many and I'll make a cart.\n\nANSWER: BRK-CS-3163",
+        "committed": "BRK-CS-3163",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "get_product",
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6854,
+        "output_tokens": 217,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q03",
+        "kind": "exact_part_number",
+        "text": "DUNRT8582",
+        "expected": [
+          "DUN-RT-8582"
+        ],
+        "final_answer": "That part number matches the Dunmore Elite 160mm Centerlock Disc Rotor, listed as DUN-RT-8582. It's a stainless steel rotor, 1.8mm thick, for road and gravel disc brakes. It costs $43.95, and 50 are in stock.\n\nANSWER: DUN-RT-8582",
+        "committed": "DUN-RT-8582",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 9527,
+        "output_tokens": 220,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q04",
+        "kind": "exact_part_number",
+        "text": "Do you have part QUI PD 5690?",
+        "expected": [
+          "QUI-PD-5690"
+        ],
+        "final_answer": "Yes, we have it. The Quillon Elite clipless road pedals (QUI-PD-5690) cost $116.95 and are in stock, with 42 available. They have an alloy body and a 9/16 inch thread, and cleats are included.\n\nANSWER: QUI-PD-5690",
+        "committed": "QUI-PD-5690",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "get_product"
+        ],
+        "turns": 2,
+        "input_tokens": 6789,
+        "output_tokens": 203,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q05",
+        "kind": "exact_part_number",
+        "text": "I need ALD-GR-7369 grips",
+        "expected": [
+          "ALD-GR-7369"
+        ],
+        "final_answer": "ALD-GR-7369 is the Aldermoor Elite Lock-on Grips 34mm in grey. They cost $14.00. They're for flat handlebars on mountain, commuter and e-bikes, and the lock-on clamps at both ends hold them in place without glue.\n\n**They're on backorder.** None are on the shelf, and an order would ship about 20 days after you place it.\n\nI can create a cart for you with the backorder, or look for similar grips that are in stock. Which would you prefer?\n\nANSWER: ALD-GR-7369",
+        "committed": "ALD-GR-7369",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "get_product",
+          "check_availability"
+        ],
+        "turns": 2,
+        "input_tokens": 6410,
+        "output_tokens": 301,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q06",
+        "kind": "adversarial",
+        "text": "STO-HT-1O64",
+        "expected": [
+          "STO-HT-1064"
+        ],
+        "final_answer": "The part number \"STO-HT-1O64\" isn't in the store. It has a letter \"O\" where a zero probably belongs. The closest match is **STO-HT-1064**, the Stonebrook Comp white cork handlebar tape. It's a 2 m wrap for drop bars, comes with end plugs and finishing tape, and costs $18.95. It is **out of stock** with no restock date, so I can't put it in a cart.\n\nIf you want something similar that's in stock, the Rookwood Elite white cork handlebar tape (ROO-HT-8751, $15.49) fits road and gravel bars.\n\nLet me know if you'd like me to make a cart with the Rookwood tape.\n\nANSWER: STO-HT-1064",
+        "committed": "STO-HT-1064",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 4,
+        "tools_used": [
+          "get_product",
+          "search_products",
+          "get_product",
+          "search_products"
+        ],
+        "turns": 4,
+        "input_tokens": 15318,
+        "output_tokens": 590,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q07",
+        "kind": "plain_description",
+        "text": "Pellmoor Tour 175mm flat saddle with chromoly rails",
+        "expected": [
+          "PEL-SD-5881"
+        ],
+        "final_answer": "The Pellmoor Tour 175mm flat Saddle with chromoly rails is an exact match for your description. It's in stock at $43.99.\n\nANSWER: PEL-SD-5881",
+        "committed": "PEL-SD-5881",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 8302,
+        "output_tokens": 284,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q08",
+        "kind": "plain_description",
+        "text": "white cork handlebar tape",
+        "expected": [
+          "ROO-HT-8751",
+          "STO-HT-1064"
+        ],
+        "final_answer": "The Rookwood Elite is white, cork, in stock and fits road and gravel bars, at $15.49. The other white cork tape, the Stonebrook Comp (STO-HT-1064), is out of stock.\n\nANSWER: ROO-HT-8751",
+        "committed": "ROO-HT-8751",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7081,
+        "output_tokens": 191,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q09",
+        "kind": "plain_description",
+        "text": "34mm grey lock-on grips",
+        "expected": [
+          "ALD-GR-7369"
+        ],
+        "final_answer": "The Aldermoor Elite Lock-on Grips 34mm grey ($14.00) are the only grips in the store that match all three of your specs: 34mm, grey and lock-on.\n\nThey are on backorder and ship about 20 days after you order. I didn't find a grey 34mm lock-on grip that's in stock.\n\nANSWER: ALD-GR-7369",
+        "committed": "ALD-GR-7369",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "check_availability"
+        ],
+        "turns": 3,
+        "input_tokens": 14720,
+        "output_tokens": 328,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q10",
+        "kind": "plain_description",
+        "text": "wet chain lube in the 250ml bottle",
+        "expected": [
+          "BRK-LU-2562",
+          "COR-LU-6752"
+        ],
+        "final_answer": "Two wet 250ml options exist. The Corvane is in stock and the Brackenridge is on backorder.\n\nThe Corvane Tour wet Chain Lube 250ml ($11.00) is a wet-formula lube in the 250ml size, and it's in stock now. The other 250ml wet lube, the Brackenridge Sport (BRK-LU-2562, $18.00), is on backorder.\n\nANSWER: COR-LU-6752",
+        "committed": "COR-LU-6752",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 8440,
+        "output_tokens": 250,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q11",
+        "kind": "plain_description",
+        "text": "clipless road pedals with a magnesium body",
+        "expected": [
+          "PEL-PD-3208",
+          "QUI-PD-9240",
+          "ROO-PD-9710"
+        ],
+        "final_answer": "The best match is the Quillon Tour at $70.99. It's a clipless road pedal with a magnesium body, and it's in stock now.\n\nTwo other pedals also fit your description:\n- **Rookwood Race (ROO-PD-9710):** $82.99, low stock.\n- **Pellmoor Elite (PEL-PD-3208):** $37.95, on backorder.\n\nI picked the Quillon because it's the only one that's both in stock and fully matches what you asked for.\n\nANSWER: QUI-PD-9240",
+        "committed": "QUI-PD-9240",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 8498,
+        "output_tokens": 391,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q12",
+        "kind": "plain_description",
+        "text": "160mm centerlock rotor, 1.8mm thick",
+        "expected": [
+          "DUN-RT-6069",
+          "DUN-RT-8582",
+          "GLE-RT-8524",
+          "NET-RT-4588"
+        ],
+        "final_answer": "The Glenhollow Trail (GLE-RT-8524) is a 160mm stainless steel centerlock rotor, 1.8mm thick, and it's the cheapest of the four that match, at $37.99.\n\nOnly 1 is on the shelf. If you need two, for front and rear, the Dunmore Elite DUN-RT-8582 has the same specs at $43.95 and 50 in stock. The Dunmore Tour (DUN-RT-6069, $51.00) and Nettlefold Tour (NET-RT-4588, $55.00) also match.\n\nANSWER: GLE-RT-8524",
+        "committed": "GLE-RT-8524",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 5,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 15925,
+        "output_tokens": 704,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q13",
+        "kind": "plain_description",
+        "text": "tubeless-ready gravel tire, 650b, 50c wide",
+        "expected": [
+          "FER-TR-7882",
+          "IRO-TR-3021",
+          "OAK-TR-2100"
+        ],
+        "final_answer": "The Ferrowick Race 650bx50c is a tubeless-ready gravel tire in 650b and 50c. It's in stock (12 available) at $29.49.\n\nThe Ironvale Trail (IRO-TR-3021) has the same specs and is in stock at $58.49. The Oakhaven Trail (OAK-TR-2100) also matches, but it's out of stock.\n\nANSWER: FER-TR-7882",
+        "committed": "FER-TR-7882",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 15110,
+        "output_tokens": 422,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q14",
+        "kind": "plain_description",
+        "text": "long-cage clutch rear derailleur for 12 speed",
+        "expected": [
+          "BRK-RD-3819"
+        ],
+        "final_answer": "The only long-cage 12-speed derailleur here with a clutch is the Brackenridge Trail 12-Speed (BRK-RD-3819), at $89.95. It takes up to a 51T cog. **It's on backorder and ships in about 32 days, with none on the shelf now.**\n\nThe other long-cage 12-speed derailleurs in the store are all listed as no-clutch:\n- Stonebrook Sport (STO-RD-5102) is in stock at $153.99. Its description mentions a \"rotating clutch\", but its specs say clutch: no, so I wouldn't count on it.\n- Tamsin Pro (TAM-RD-7609) is in stock at $84.99, with no clutch.\n- Tamsin Sport (TAM-RD-3537) has no clutch and is out of stock.\n\nIf you can wait for the restock, the Brackenridge is the one that matches what you asked for. I can make a cart for it if you'd like.\n\nANSWER: BRK-RD-3819",
+        "committed": "BRK-RD-3819",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 5,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 4,
+        "input_tokens": 23615,
+        "output_tokens": 768,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q15",
+        "kind": "compatibility",
+        "text": "a chain that fits my 11-speed road bike",
+        "expected": [
+          "ALD-CH-6403",
+          "ALD-CH-7566",
+          "BRK-CH-3285",
+          "BRK-CH-8063",
+          "FER-CH-1028",
+          "FER-CH-1581",
+          "FER-CH-4296"
+        ],
+        "final_answer": "The Ferrowick Pro 11-Speed Chain is built for 11-speed drivetrains and is listed as fitting road bikes. It's in stock at $24.99 and comes with a reusable quick link.\n\nOther 11-speed chains in stock are the Aldermoor Ride (ALD-CH-7566, $28.00) and the Ferrowick Tour (FER-CH-1581, $26.00, low stock). I picked the Pro because it's the cheapest of the three.\n\nIf you want it, tell me the quantity and I'll make you a cart.\n\nANSWER: FER-CH-4296",
+        "committed": "FER-CH-4296",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 11019,
+        "output_tokens": 429,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q16",
+        "kind": "compatibility",
+        "text": "cassette for a 10-speed mountain bike",
+        "expected": [
+          "COR-CS-1779",
+          "COR-CS-7029",
+          "FER-CS-8488"
+        ],
+        "final_answer": "The best default is the Corvane Trail 10-Speed 11-36T (COR-CS-7029). It's a 10-speed mountain cassette that fits a standard freehub. It's in stock at $72.49.\n\nTwo other mountain options exist:\n- **Corvane Race 10-51T (COR-CS-1779), $74.99:** It's in stock but needs a wide freehub and a derailleur that can handle the big 51T cog. Choose it only if your bike has both.\n- **Ferrowick Comp 10-45T (FER-CS-8488), $53.95:** It's on backorder.\n\nANSWER: COR-CS-7029",
+        "committed": "COR-CS-7029",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 11822,
+        "output_tokens": 516,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q17",
+        "kind": "compatibility",
+        "text": "rim brake pads for my road bike",
+        "expected": [
+          "GLE-BP-6003",
+          "GLE-BP-7931"
+        ],
+        "final_answer": "The Glenhollow Ride Rim Brake Pads (GLE-BP-7931) are the best match. They're listed for road bikes and rim brakes, they're in stock, and they cost $12.49. They're resin pads with threaded posts.\n\nIf you'd like a higher-end pad, the Glenhollow Elite (GLE-BP-6003, $28.95) is also road and rim-brake compatible. It's semi-metallic with a cartridge holder. Pad holders differ, so check whether your brakes take threaded-post or cartridge-style pads before ordering.\n\nANSWER: GLE-BP-7931",
+        "committed": "GLE-BP-7931",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7725,
+        "output_tokens": 402,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q18",
+        "kind": "compatibility",
+        "text": "tires for my 29er mountain bike",
+        "expected": [
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "IRO-TR-5575",
+          "NET-TR-8235",
+          "OAK-TR-7351",
+          "OAK-TR-9434"
+        ],
+        "final_answer": "Several tires fit a 29er, and I'm recommending the cheapest one that's in stock. The Oakhaven Comp 29x2.4 clincher is a 29-inch mountain tire at $24.00 and can ship now.\n\nOther options:\n- **Nettlefold Comp 29x2.25 clincher:** $27.00, in stock.\n- **Ferrowick Comp 29x2.4 tubeless-ready:** $55.99, in stock. Choose this one if you run tubeless.\n- **Backordered:** Ironvale Ride ($39.95), Ferrowick Pro folding ($30.95) and Oakhaven Elite tubeless-ready ($49.49). None of these can ship right now.\n\nTell me if you want a different tire type or a specific quantity, and I'll set up a cart.\n\nANSWER: OAK-TR-9434",
+        "committed": "OAK-TR-9434",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6716,
+        "output_tokens": 410,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q19",
+        "kind": "compatibility",
+        "text": "front thru axle for a 15x110 fork",
+        "expected": [
+          "COR-AX-3067",
+          "FER-AX-5956",
+          "FER-AX-9563",
+          "GLE-AX-7410",
+          "IRO-AX-4014",
+          "IRO-AX-6477"
+        ],
+        "final_answer": "The Glenhollow Trail is a chromoly front thru axle made for 15x110 forks. It includes the lever, costs $14.99, and has 53 in stock.\n\nFive other 15x110 front axles are available, from $18.49 to $44.95: Ferrowick Race (FER-AX-5956), Ferrowick Comp (FER-AX-9563), Ironvale Trail (IRO-AX-6477), Corvane Sport (COR-AX-3067) and Ironvale Ride (IRO-AX-4014). I chose this one because it's the cheapest and is fully in stock. The listing doesn't give thread pitch or axle length, so check those against your fork before you buy.\n\nANSWER: GLE-AX-7410",
+        "committed": "GLE-AX-7410",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 17496,
+        "output_tokens": 574,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q20",
+        "kind": "compatibility",
+        "text": "disc rotor that works on my e-bike",
+        "expected": [
+          "DUN-RT-4450",
+          "DUN-RT-6603",
+          "FER-RT-4268",
+          "GLE-RT-4402",
+          "GLE-RT-4867",
+          "GLE-RT-6445",
+          "IRO-RT-2114",
+          "IRO-RT-2241",
+          "IRO-RT-2893",
+          "IRO-RT-9800",
+          "NET-RT-5274",
+          "NET-RT-9974"
+        ],
+        "final_answer": "I can't pick the right rotor yet, because the store has several e-bike rotors and they differ in mount type and size. Two details decide which one fits your bike:\n\n1. **Mount type.** Look at the hub. Centerlock has a splined ring with a lockring. 6-bolt has six small bolts around the hub.\n2. **Diameter.** The size is usually printed on the rotor, commonly 180mm or 203mm. Your current rotor will tell you. Your frame or fork also has a maximum size.\n\nThese e-bike-rated rotors are in stock:\n\n**Centerlock**\n- NET-RT-9974, Nettlefold Ride 203mm, $42.99\n- IRO-RT-2893, Ironvale Tour 203mm, $43.49\n- GLE-RT-4867, Glenhollow Sport 203mm, $46.95\n\n**6-bolt, 203mm**\n- FER-RT-4268, Ferrowick Sport, $51.00\n- GLE-RT-4402, Glenhollow Race, $55.00\n\n**6-bolt, 180mm**\n- GLE-RT-6445, Glenhollow Comp, $39.00\n- DUN-RT-4450, Dunmore Comp, $41.49\n- IRO-RT-9800, Ironvale Race, $48.99\n- IRO-RT-2241, Ironvale Trail, $57.99\n\nIf you tell me your mount type and size, I'll choose one and make a cart for you. If you don't know yet, the cheapest 6-bolt option is GLE-RT-6445. It only fits if your bike takes a 6-bolt, 180mm rotor.\n\nANSWER: none",
+        "committed": "none",
+        "correct": false,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 15544,
+        "output_tokens": 924,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q21",
+        "kind": "compatibility",
+        "text": "chainring for a 12-speed road bike",
+        "expected": [
+          "STO-CR-3335",
+          "TAM-CR-8768"
+        ],
+        "final_answer": "The Tamsin Sport 42T is the only 12-speed road chainring the store has in stock. It's a 94mm BCD ring with ramped teeth for quick shifts, and it costs $42.95. Only 1 is left. The other option, the Stonebrook Elite 50T, is out of stock. Check that your crankset uses a 94mm BCD before you buy.\n\nANSWER: TAM-CR-8768",
+        "committed": "TAM-CR-8768",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 9899,
+        "output_tokens": 327,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q22",
+        "kind": "compatibility",
+        "text": "rear hub for a 12x142 thru axle frame with an 11-speed disc brake setup",
+        "expected": [
+          "DUN-HB-2260",
+          "DUN-HB-2395",
+          "DUN-HB-8286",
+          "DUN-HB-9287",
+          "DUN-HB-9686",
+          "FER-HB-5409",
+          "FER-HB-7703",
+          "GLE-HB-2115",
+          "GLE-HB-5923",
+          "IRO-HB-2282",
+          "IRO-HB-2460",
+          "IRO-HB-6346",
+          "IRO-HB-6727",
+          "IRO-HB-8272",
+          "IRO-HB-8472",
+          "NET-HB-3212",
+          "NET-HB-8250"
+        ],
+        "final_answer": "Several in-stock hubs fit a 12x142 thru-axle, 11-speed, disc-brake setup. I'm recommending the cheapest one, the Dunmore Trail Rear Hub. It has a 12x142 axle, a standard freehub that takes 8–11-speed cassettes, and a centerlock disc mount. It has 24 spoke holes and is in stock at $94.00.\n\nYour wheel's spoke count has to match the hub. If you need 28 or 32 holes, the Ironvale Trail (IRO-HB-8272, 28H, $114.99) and Ironvale Pro (IRO-HB-6727, 32H, $126.00) are similar standard-freehub options. You'll also need centerlock rotors.\n\nANSWER: DUN-HB-8286",
+        "committed": "DUN-HB-8286",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 4,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 14103,
+        "output_tokens": 808,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q23",
+        "kind": "typo",
+        "text": "cassete 11-34T",
+        "expected": [
+          "DUN-CS-5327",
+          "DUN-CS-9273",
+          "GLE-CS-8177"
+        ],
+        "final_answer": "The store has three 11-34T cassettes. They differ by speed count, and you didn't say which one you need.\n\n- **DUN-CS-5327**: Dunmore Ride 9-speed, gravel, $91.00, in stock.\n- **GLE-CS-8177**: Glenhollow Comp 10-speed, gravel, $98.00, in stock.\n- **DUN-CS-9273**: Dunmore Elite 12-speed, gravel, $93.95, in stock.\n\nThe store has no 11-speed cassette in 11-34T. The closest 11-speed options are 11-30T or 12-32T.\n\nI can't tell which one is best until I know how many speeds your drivetrain has. I'm listing the 10-speed as a placeholder because it's the middle option, not because it's the best fit.\n\nThe Glenhollow Comp is the 11-34T gravel cassette for a 10-speed drivetrain. Tell me your speed count and I'll confirm the right one or create a cart.\n\nANSWER: GLE-CS-8177",
+        "committed": "GLE-CS-8177",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "search_products"
+        ],
+        "turns": 3,
+        "input_tokens": 15179,
+        "output_tokens": 601,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q24",
+        "kind": "typo",
+        "text": "chian lube wet",
+        "expected": [
+          "BRK-LU-2562",
+          "COR-LU-6752",
+          "DUN-LU-6630",
+          "DUN-LU-7540",
+          "FER-LU-6256"
+        ],
+        "final_answer": "I'd go with the Corvane Tour wet Chain Lube 250ml at $11.00. It's a wet lube, it's in stock, and it costs less per ml than the other in-stock wet lubes.\n\nThe other in-stock wet options are:\n- **Ferrowick Sport wet 120ml**, $7.95 (FER-LU-6256). It's the cheapest, but you get less lube.\n- **Dunmore Tour wet 120ml**, $13.99 (DUN-LU-7540).\n\nTwo wet lubes aren't available: the Dunmore Ride 120ml is out of stock and the Brackenridge Sport 250ml is on backorder.\n\nANSWER: COR-LU-6752",
+        "committed": "COR-LU-6752",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6991,
+        "output_tokens": 462,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q25",
+        "kind": "typo",
+        "text": "bake pads disk resin",
+        "expected": [
+          "COR-BP-3373",
+          "COR-BP-4662",
+          "COR-BP-4956",
+          "COR-BP-6183",
+          "DUN-BP-3223",
+          "FER-BP-4602"
+        ],
+        "final_answer": "You didn't say what bike or caliper you have, so I can't pin down one exact fit. There are five resin disc pad options. Four can ship now, and the fifth is on backorder.\n\n- **Dunmore Sport, DUN-BP-3223:** $33, in stock, Type-B flat-mount, commuter. This is the one I'd pick.\n- **Corvane Pro, COR-BP-4956:** $34.99, in stock, Type-B flat-mount, gravel.\n- **Corvane Race, COR-BP-6183:** $33, in stock, Type-C four-piston, mountain.\n- **Ferrowick Pro, FER-BP-4602:** $29, low stock, Type-B flat-mount, road.\n- **Corvane Tour, COR-BP-4662:** $40.49, backorder, Type-B flat-mount, mountain.\n\nI picked the Dunmore because it's a resin disc pad that's in stock, at a mid-range price, and it suits general commuter or road use. Check that your caliper takes Type-B flat-mount pads before you buy. If you have a four-piston mountain brake, the Corvane Race (COR-BP-6183) is the better choice.\n\nANSWER: DUN-BP-3223",
+        "committed": "DUN-BP-3223",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7707,
+        "output_tokens": 627,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q26",
+        "kind": "typo",
+        "text": "derailer 11 speed",
+        "expected": [
+          "ALD-RD-7183",
+          "COR-RD-1126",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "STO-RD-3843",
+          "TAM-RD-1887"
+        ],
+        "final_answer": "I found six 11-speed rear derailleurs, and five of them can ship now. You didn't say what bike you have, so I picked a mid-priced, in-stock default.\n\n- **Corvane Ride, short-cage (COR-RD-5031), $97.95:** in stock, and my pick.\n- **Corvane Sport, short-cage (COR-RD-1126), $115.49:** in stock.\n- **Aldermoor Elite, short-cage (ALD-RD-7183), $130.99:** in stock.\n- **Stonebrook Tour, long-cage (STO-RD-3530), $102.95:** in stock.\n- **Stonebrook Trail, long-cage (STO-RD-3843), $79.95:** low stock.\n- **Tamsin Comp, medium-cage (TAM-RD-1887), $139.49:** out of stock.\n\nAll six are listed as fitting road, gravel and mountain bikes. Short-cage models suit a typical road or gravel setup. Long-cage models handle wider-range cassettes. Tell me your cassette size and bike type if you want me to narrow it down.\n\nThe Corvane Ride is the cheapest in-stock 11-speed derailleur, and it's a short-cage that fits road, gravel and mountain bikes.\n\nANSWER: COR-RD-5031",
+        "committed": "COR-RD-5031",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6792,
+        "output_tokens": 733,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q27",
+        "kind": "typo",
+        "text": "bottel cage carbon",
+        "expected": [
+          "COR-BC-3731",
+          "COR-BC-4802",
+          "TAM-BC-3373"
+        ],
+        "final_answer": "There are three carbon bottle cages in stock:\n\n- **Tamsin Sport carbon, universal (TAM-BC-3373): $14.49.** This is the cheapest, and it's listed as universal.\n- **Corvane Trail carbon, side-entry (COR-BC-4802): $24.00.**\n- **Corvane Pro carbon, side-entry (COR-BC-3731): $35.49.**\n\nI'm recommending the Tamsin Sport. It's a carbon cage, it's in stock, and it's the lowest price. If you want a side-entry cage, the Corvane Trail is the next choice.\n\nANSWER: TAM-BC-3373",
+        "committed": "TAM-BC-3373",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7018,
+        "output_tokens": 384,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q28",
+        "kind": "typo",
+        "text": "pedles clipless mountian",
+        "expected": [
+          "OAK-PD-5088",
+          "OAK-PD-9685",
+          "PEL-PD-1758",
+          "PEL-PD-9332",
+          "QUI-PD-2837",
+          "ROO-PD-2433",
+          "STO-PD-8237"
+        ],
+        "final_answer": "I'd go with the Quillon Race. It's a clipless pedal made for mountain bikes, it has an alloy body, it's in stock, and at $20.95 it's the cheapest of the in-stock mountain options.\n\nOther in-stock mountain clipless pedals:\n- **Oakhaven Pro** (composite): $29.99\n- **Rookwood Sport** (composite): $53.95\n- **Oakhaven Tour** (alloy): $81.49\n- **Pellmoor Elite** (magnesium): $98.49\n- **Pellmoor Comp** (magnesium): $109.95\n\nTell me if you want a lighter or higher-end pedal, and I can make you a cart.\n\nANSWER: QUI-PD-2837",
+        "committed": "QUI-PD-2837",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7031,
+        "output_tokens": 401,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q29",
+        "kind": "synonym",
+        "text": "tyre 29x2.4",
+        "expected": [
+          "FER-TR-3965",
+          "FER-TR-4252",
+          "IRO-TR-5575",
+          "OAK-TR-9434"
+        ],
+        "final_answer": "The best match is the Oakhaven Comp 29x2.4 mountain tire. It's a 29x2.4 clincher, it's in stock, and at $24.00 it's the cheapest of the four 29x2.4 tires.\n\nOther 29x2.4 options:\n- **Ferrowick Comp (FER-TR-3965):** $55.99, tubeless-ready and in stock. Choose this if you run tubeless.\n- **Ferrowick Pro (FER-TR-4252):** $30.95, folding clincher, on backorder.\n- **Ironvale Ride (IRO-TR-5575):** $39.95, clincher, on backorder.\n\nI can create a cart if you tell me which one you want and how many.\n\nANSWER: OAK-TR-9434",
+        "committed": "OAK-TR-9434",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 11438,
+        "output_tokens": 541,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q30",
+        "kind": "synonym",
+        "text": "cogset 10-speed 10-51",
+        "expected": [
+          "COR-CS-1779"
+        ],
+        "final_answer": "The Corvane Race 10-Speed 10-51T Mountain Cassette is the only 10-speed cassette in the store with a 10-51T range. It's in stock at $74.99 and ships in one business day.\n\nCheck that your rear derailleur can handle a 51T cog, because that's a very wide range. Also check that your freehub takes this cassette. I can look up compatible derailleurs if you'd like. I can also make a cart for you.\n\nANSWER: COR-CS-1779",
+        "committed": "COR-CS-1779",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "check_availability"
+        ],
+        "turns": 3,
+        "input_tokens": 20626,
+        "output_tokens": 435,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q31",
+        "kind": "synonym",
+        "text": "headlight 1000 lumen",
+        "expected": [
+          "ALD-LT-1222",
+          "ALD-LT-6004",
+          "FER-LT-2757"
+        ],
+        "final_answer": "Two in-stock front lights are rated at exactly 1000 lumens, and their listed specs are identical. Both are USB-C rechargeable and have a strap mount that fits handlebars and seatposts. Both also have a daytime flash mode. I picked the cheaper Aldermoor Sport 1000 lumen front Light ($23.49) because nothing in the listings justifies the extra cost of the Pro ($42.00, ALD-LT-1222).\n\nA third 1000-lumen option, the Ferrowick Tour (FER-LT-2757, $33.95), is on backorder.\n\nANSWER: ALD-LT-6004",
+        "committed": "ALD-LT-6004",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "get_product"
+        ],
+        "turns": 3,
+        "input_tokens": 12461,
+        "output_tokens": 487,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q32",
+        "kind": "synonym",
+        "text": "lubricant for dry conditions",
+        "expected": [
+          "BRK-LU-3806",
+          "COR-LU-3403",
+          "COR-LU-8153",
+          "DUN-LU-8626",
+          "FER-LU-9918",
+          "GLE-LU-5251",
+          "GLE-LU-9777"
+        ],
+        "final_answer": "The Corvane Pro dry Chain Lube 120ml is a dry-condition formula, and it's in stock. At $8.49 for 120ml, it's the best value of the dry lubes I found. The Ferrowick Race dry 60ml is $7.95, but it's low on stock and holds half as much.\n\nANSWER: COR-LU-8153",
+        "committed": "COR-LU-8153",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7000,
+        "output_tokens": 283,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q33",
+        "kind": "synonym",
+        "text": "skewer for my road bike",
+        "expected": [
+          "COR-AX-6864",
+          "COR-AX-9660",
+          "DUN-AX-2395",
+          "FER-AX-5464",
+          "FER-AX-6449",
+          "GLE-AX-7603",
+          "IRO-AX-3844"
+        ],
+        "final_answer": "The store sells seven road-compatible quick-release skewers. All seven are rear skewers, and I found no front ones. They run from $15.99 to $39.95. The cheapest is the Ironvale Ride quick-release rear skewer (IRO-AX-3844). It's a chromoly skewer that includes the lever, and 22 are in stock.\n\nI'm assuming your bike has quick-release dropouts. If it has thru-axles instead, you'd need a 12x142 rear or 12x100 front thru-axle, so tell me and I'll look at those.\n\nANSWER: IRO-AX-3844",
+        "committed": "IRO-AX-3844",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "get_product",
+          "search_products"
+        ],
+        "turns": 3,
+        "input_tokens": 13430,
+        "output_tokens": 579,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q34",
+        "kind": "synonym",
+        "text": "mech for 11 speed",
+        "expected": [
+          "ALD-RD-7183",
+          "COR-RD-1126",
+          "COR-RD-5031",
+          "STO-RD-3530",
+          "STO-RD-3843",
+          "TAM-RD-1887"
+        ],
+        "final_answer": "The best all-round choice is the Corvane Ride 11-Speed short-cage Rear Derailleur ($97.95, in stock). It's made for 11-speed drivetrains and works on road, gravel and mountain bikes, and it costs less than the other short-cage models.\n\nOther options:\n- **Corvane Sport short-cage (COR-RD-1126):** $115.49, in stock.\n- **Aldermoor Elite short-cage (ALD-RD-7183):** $130.99, in stock.\n- **Stonebrook Tour long-cage (STO-RD-3530):** $102.95, in stock. Long-cage suits a wide-range cassette.\n- **Stonebrook Trail long-cage (STO-RD-3843):** $79.95, low stock. This is the cheapest option.\n- **Tamsin Comp medium-cage (TAM-RD-1887):** $139.49, out of stock.\n\nIf your cassette is large (for example 11-42T), tell me and I'll check the long-cage options instead.\n\nANSWER: COR-RD-5031",
+        "committed": "COR-RD-5031",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6792,
+        "output_tokens": 609,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q35",
+        "kind": "filter",
+        "text": "11-speed chain, in stock, under $30",
+        "expected": [
+          "ALD-CH-7566",
+          "FER-CH-1581",
+          "FER-CH-4296"
+        ],
+        "final_answer": "I'd go with the Ferrowick Pro 11-Speed Chain. It's an in-stock 11-speed chain for road, gravel and mountain bikes, and at $24.99 it's the cheapest of the three options under $30.\n\nThe other two were the Aldermoor Ride (ALD-CH-7566) at $28.00, in stock, and the Ferrowick Tour (FER-CH-1581) at $26.00, which is low on stock.\n\nANSWER: FER-CH-4296",
+        "committed": "FER-CH-4296",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6453,
+        "output_tokens": 338,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q36",
+        "kind": "filter",
+        "text": "disc brake pads under $20 that I can get now",
+        "expected": [
+          "FER-BP-1307",
+          "GLE-BP-6058",
+          "GLE-BP-7644"
+        ],
+        "final_answer": "Three disc brake pad sets under $20 are in stock and ship within one business day. Which one fits depends on your calipers:\n\n- **Glenhollow Tour, GLE-BP-6058, $19.49:** sintered, Type-C, for four-piston calipers. It's aimed at commuter bikes, and 42 are on the shelf.\n- **Ferrowick Ride, FER-BP-1307, $16.99:** semi-metallic, Type-B flat-mount, for mountain bikes. 32 are on the shelf.\n- **Glenhollow Trail, GLE-BP-7644, $14.00:** sintered, Type-B flat-mount, for road bikes. Only 2 are left.\n\nI'm recommending the Ferrowick. It's a disc-specific pad that's well under budget, it has plenty of stock, and it suits general mountain use. Check your caliper type first, because flat-mount Type-B and four-piston Type-C pads aren't interchangeable. If you tell me your bike or caliper, I can narrow it down or make a cart.\n\nANSWER: FER-BP-1307",
+        "committed": "FER-BP-1307",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "check_availability"
+        ],
+        "turns": 3,
+        "input_tokens": 10855,
+        "output_tokens": 695,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q37",
+        "kind": "filter",
+        "text": "carbon rail saddle under $60",
+        "expected": [
+          "QUI-SD-8038",
+          "ROO-SD-2573"
+        ],
+        "final_answer": "Two saddles under $60 have carbon rails. One is in stock and the other is on backorder. I'm recommending the in-stock one.\n\nThe Rookwood Sport 155mm cut-out saddle has carbon rails, costs $47.99, and ships now. It's listed for gravel bikes. The Quillon Ride (QUI-SD-8038) also has carbon rails and costs $56.99, but it's on backorder.\n\nANSWER: ROO-SD-2573",
+        "committed": "ROO-SD-2573",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 7775,
+        "output_tokens": 280,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q38",
+        "kind": "filter",
+        "text": "in-stock 29in tire under $30",
+        "expected": [
+          "NET-TR-8235",
+          "OAK-TR-9434"
+        ],
+        "final_answer": "I found two in-stock 29in tires under $30:\n\n- **Oakhaven Comp 29x2.4 mountain tire, clincher (OAK-TR-9434):** $24.00\n- **Nettlefold Comp 29x2.25 mountain tire, clincher (NET-TR-8235):** $27.00\n\nI'm recommending the Oakhaven. It's the cheaper of the two, and its wider 2.4 width gives more grip and cushion on trails. The Nettlefold's narrower 2.25 width is a better choice if your frame or fork has limited clearance.\n\nANSWER: OAK-TR-9434",
+        "committed": "OAK-TR-9434",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6338,
+        "output_tokens": 434,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q39",
+        "kind": "filter",
+        "text": "any Ferrowick rear light I can buy today",
+        "expected": [
+          "FER-LT-5825",
+          "FER-LT-7106",
+          "FER-LT-7619"
+        ],
+        "final_answer": "Yes. Ferrowick has three rear lights in stock that can ship today:\n\n- **FER-LT-5825**: Sport, 30 lumen, $43.99\n- **FER-LT-7619**: Pro, 30 lumen, $58.00\n- **FER-LT-7106**: Race, 50 lumen, $69.95\n\nThe Tour 100 lumen rear light (FER-LT-8834, $72.95) is on backorder, so it won't ship today.\n\nIf you just want the cheapest one you can get today, the Sport 30 lumen is the one. Choose the Race if you want a brighter 50 lumen light. I can make a cart for whichever you pick.\n\nANSWER: FER-LT-5825",
+        "committed": "FER-LT-5825",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6889,
+        "output_tokens": 417,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q40",
+        "kind": "filter",
+        "text": "presta inner tube for 700c, in stock, under $8",
+        "expected": [
+          "GLE-TB-6418",
+          "IRO-TB-5411"
+        ],
+        "final_answer": "Two in-stock 700c Presta tubes are under $8. They differ in tire width, so pick the one that matches your tires:\n\n- **Ironvale IRO-TB-5411**: $4.95, for 23–32c tires, with a 32mm valve. This is the usual choice for road bikes.\n- **Glenhollow GLE-TB-6418**: $5.95, for 35–45c tires, with a 40mm valve. This one suits hybrid and gravel tires.\n\nYou didn't give a tire width, so I'm going with the Ironvale, the cheaper one. It's the standard 700c road size. If your tires are 35c or wider, get the Glenhollow instead.\n\nANSWER: IRO-TB-5411",
+        "committed": "IRO-TB-5411",
+        "correct": true,
+        "mentions_expected": true,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 1,
+        "tools_used": [
+          "search_products"
+        ],
+        "turns": 2,
+        "input_tokens": 6987,
+        "output_tokens": 387,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q41",
+        "kind": "no_match",
+        "text": "a bicycle helmet in size medium",
+        "expected": [],
+        "final_answer": "The store doesn't sell helmets. Its catalog only covers bike parts like chains, cassettes, brakes, tires, saddles, pedals and lights. My search for \"helmet\" returned no matches. The only results for \"medium\" were medium-cage rear derailleurs, which aren't relevant.\n\nANSWER: none",
+        "committed": "none",
+        "correct": true,
+        "mentions_expected": false,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 2,
+        "tools_used": [
+          "search_products",
+          "search_products"
+        ],
+        "turns": 3,
+        "input_tokens": 10368,
+        "output_tokens": 210,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q42",
+        "kind": "no_match",
+        "text": "floor pump with a pressure gauge",
+        "expected": [],
+        "final_answer": "The store doesn't appear to carry pumps. None of the categories it lists covers them, and searches for \"pump\" and \"inflator\" returned nothing. The first search returned only saddles.\n\nANSWER: none",
+        "committed": "none",
+        "correct": true,
+        "mentions_expected": false,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "search_products"
+        ],
+        "turns": 3,
+        "input_tokens": 10381,
+        "output_tokens": 264,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q43",
+        "kind": "no_match",
+        "text": "8-speed cassette for a vintage road bike",
+        "expected": [],
+        "final_answer": "The store doesn't sell an 8-speed cassette, so I'm not recommending any of its cassettes. Its road cassettes are 9-, 10-, 11- and 12-speed, and none is listed as 8-speed. A 9-speed or wider cassette has different cog spacing. It won't shift properly with an 8-speed shifter and chain.\n\nThe store does sell 8-speed chains, such as the Corvane Ride 8-Speed Chain (COR-CH-4748, $12.00). It also sells rear hubs whose freehubs take 8- to 11-speed cassettes. If you want, I can look at either of those for you. A used or old-stock 8-speed cassette from another source would probably suit a vintage bike better.\n\nANSWER: none",
+        "committed": "none",
+        "correct": true,
+        "mentions_expected": false,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 3,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "search_products"
+        ],
+        "turns": 3,
+        "input_tokens": 18251,
+        "output_tokens": 550,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      },
+      {
+        "id": "q44",
+        "kind": "no_match",
+        "text": "26-inch mountain bike tire",
+        "expected": [],
+        "final_answer": "The store doesn't sell a 26-inch mountain bike tire. Its mountain tires come only in 27.5\" and 29\". Its 26\" stock is limited to inner tubes, and neither of the other sizes will fit a 26\" rim.\n\nIf you'd like, I can show you a 26\" inner tube (1.9–2.3in) to go with a tire from another shop.\n\nANSWER: none",
+        "committed": "none",
+        "correct": true,
+        "mentions_expected": false,
+        "answered": true,
+        "stop_reason": "end_turn",
+        "tool_calls": 4,
+        "tools_used": [
+          "search_products",
+          "search_products",
+          "search_products",
+          "search_products"
+        ],
+        "turns": 4,
+        "input_tokens": 19661,
+        "output_tokens": 528,
+        "error": null,
+        "trial": 1,
+        "models": [
+          "claude-sonnet-5-5"
+        ]
+      }
+    ]
+  }
+}

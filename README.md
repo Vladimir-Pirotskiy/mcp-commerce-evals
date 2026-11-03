@@ -246,8 +246,8 @@ counts and trials.
 ### Tool-level results
 
 Tool-level run on 2026-11-03, release build, store and CLI on the same machine (Apple M4 Max,
-64 GiB, macOS 27.2), loopback, one run of 44 queries (40 ranked, 4 `no_match`), `--top-k 10`, `--repeat 1`, build of git
-this commit's parent (its `meta` block is in the file):
+64 GiB, macOS 27.2), loopback, one run of 44 queries (40 ranked, 4 `no_match`), `--top-k 10`, `--repeat 1`, built from commit
+`e0f398e` (the `git_commit` in the file's `meta` block):
 
 ```sh
 cargo build --release --workspace
@@ -261,15 +261,15 @@ p95 are milliseconds. The file is `results/tool-level-2026-11-03.json`.
 
 | kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 (95% CI) | nDCG@10 (95% CI) | MRR (95% CI) | p50 ms | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (1.00-1.00) | 0.30 (0.30-0.30) | 0.11 (0.11-0.11) | 0.46 | 0.46 |
-| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (0.70-1.00) | 0.89 (0.67-1.00) | 0.89 (0.67-1.00) | 0.58 | 0.77 |
-| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.54 | 1.02 |
-| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.47 | 0.55 |
-| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (1.00-1.00) | 0.94 (0.81-1.00) | 0.92 (0.75-1.00) | 0.58 | 0.70 |
-| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.50 | 1.43 |
-| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.58 | 0.76 |
-| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.58 | 1.00 |
-| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.58 | 1.02 |
+| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (1.00-1.00) | 0.30 (0.30-0.30) | 0.11 (0.11-0.11) | 0.72 | 0.72 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (0.70-1.00) | 0.89 (0.67-1.00) | 0.89 (0.67-1.00) | 0.54 | 0.74 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.43 | 1.62 |
+| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.43 | 0.82 |
+| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (1.00-1.00) | 0.94 (0.81-1.00) | 0.92 (0.75-1.00) | 0.55 | 0.72 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.55 | 1.14 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.66 | 1.18 |
+| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.56 | 1.14 |
+| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.56 | 1.18 |
 
 The four `no_match` queries returned 10 results each (the store always returns its best guesses)
 and are not in any row above.
@@ -293,7 +293,87 @@ call. Rankings are deterministic for a given seed; latency varies from run to ru
 
 ### Assistant-level results
 
-Pending a full run.
+Run on 2026-11-03 from commit `e0f398e` (the `git_commit` in each file's `meta`), release build, store
+on loopback, the 44 queries of the tool-level run, `--max-turns 8`, and no `temperature` sent
+(`null` in the report). Two models, each answered by the model it asked for (`response_models`):
+`claude-haiku-5-5` with `--trials 3` (132 runs) and `claude-sonnet-5-5` with one trial (44 runs).
+No run ended in an API error or without a final answer. The files are
+`results/assistant-level-2026-11-03-claude-haiku-5-5.json` and
+`results/assistant-level-2026-11-03-claude-sonnet-5-5.json`.
+
+```sh
+./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp --assistant anthropic \
+  --model claude-haiku-5-5 --trials 3 --out results/assistant-level-2026-11-03-claude-haiku-5-5.json
+./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp --assistant anthropic \
+  --model claude-sonnet-5-5 --out results/assistant-level-2026-11-03-claude-sonnet-5-5.json
+```
+
+A run is correct when its `ANSWER:` line commits to an expected id (`none` for a `no_match` query).
+Intervals are 95% Wilson and count every run as independent.
+
+**claude-haiku-5-5**, 3 trials per query: pass@1 0.94, pass@2 0.95, pass@3 0.95. Tokens over all 132
+runs: 1,196,419 input and 76,890 output.
+
+| kind | runs | committed answer correct (95% CI) | tool calls per query | input tokens | output tokens |
+|---|---:|---:|---:|---:|---:|
+| adversarial | 3 | 0.67 (0.21-0.94) | 3.7 | 42,451 | 2,869 |
+| compatibility | 24 | 0.88 (0.69-0.96) | 1.5 | 197,436 | 15,026 |
+| exact_part_number | 15 | 1.00 (0.80-1.00) | 1.1 | 94,366 | 4,896 |
+| filter | 18 | 1.00 (0.82-1.00) | 1.0 | 118,650 | 10,351 |
+| no_match | 12 | 1.00 (0.76-1.00) | 2.9 | 194,862 | 6,821 |
+| plain_description | 24 | 1.00 (0.86-1.00) | 2.5 | 254,538 | 13,035 |
+| synonym | 18 | 0.94 (0.74-0.99) | 1.5 | 139,987 | 10,661 |
+| typo | 18 | 0.83 (0.61-0.94) | 1.3 | 154,129 | 13,231 |
+| **all** | 132 | 0.94 (0.88-0.97) | 1.7 | 1,196,419 | 76,890 |
+
+**claude-sonnet-5-5**, 1 trial per query. Tokens over all 44 runs: 473,526 input and 19,703 output.
+
+| kind | runs | committed answer correct (95% CI) | tool calls per query | input tokens | output tokens |
+|---|---:|---:|---:|---:|---:|
+| adversarial | 1 | 1.00 (0.21-1.00) | 4.0 | 15,318 | 590 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 2.4 | 94,324 | 4,390 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.8 | 35,770 | 1,140 |
+| filter | 6 | 1.00 (0.61-1.00) | 1.2 | 45,297 | 2,551 |
+| no_match | 4 | 1.00 (0.51-1.00) | 3.0 | 58,661 | 1,552 |
+| plain_description | 8 | 1.00 (0.68-1.00) | 2.5 | 101,691 | 3,338 |
+| synonym | 6 | 1.00 (0.61-1.00) | 2.2 | 71,747 | 2,934 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.2 | 50,718 | 3,208 |
+| **all** | 44 | 0.98 (0.88-1.00) | 2.1 | 473,526 | 19,703 |
+
+What the per-query rows show:
+
+- Four queries account for every miss. Haiku missed q20 ("disc rotor that works on my e-bike") and
+  q23 ("cassete 11-34T") in all three trials, q33 ("skewer for my road bike") once and q06 once;
+  Sonnet missed q20. None of these is a retrieval failure. On q20 and q33 the models listed
+  matching parts and asked for the mount type or whether the bike takes quick-release; Haiku ended
+  four of those replies with no `ANSWER:` line at all, and Sonnet committed `none`. On q23 Haiku
+  answered in Spanish, listed the three 11-34T cassettes and committed `none` until it knew the
+  speed count; Sonnet listed the same three and committed to one. The scorer rewards committing, so
+  asking back a fair question counts as a miss; the queries do allow several right answers (12 for q20).
+- q06 (`STO-HT-1O64`) is ranked 9th by the search, yet the models got there: every run began with
+  `get_product` on the typed id, then `search_products`, then `get_product` on the recovered
+  `STO-HT-1064` (a second search followed in three of the four runs). Haiku trial 2 used one search,
+  so it picked the part out of the ten results. The result files keep tool names, not their
+  arguments, so I cannot say what the second searches asked. Haiku's one miss committed to an
+  in-stock handlebar tape instead of the out-of-stock expected part.
+- All 16 `no_match` runs (12 Haiku, 4 Sonnet) committed `none`, after 2.9 and 3.0 tool calls on
+  average, more than any other kind except the adversarial query. The store always returns its best
+  guesses, so the models had to read the results and decide none of them fit.
+- Sonnet scored 0.98 against Haiku's 0.94 at 2.1 tool calls per query against 1.7; the intervals
+  overlap widely, and Sonnet ran each query once.
+
+Caveats: n is 44 queries, and a kind has 1 to 8 of them. The same person wrote the catalog and the
+queries. Without a temperature the runs are not deterministic, so a rerun will differ; with three
+Haiku trials the interval treats runs of one query as independent, which they are not, so read
+pass@k and the per-query rows instead. Sonnet has a single trial, so its figure says nothing about
+run-to-run spread. `results/` also holds an earlier tool-level run (2026-11-02, an older file layout);
+the numbers above come from the 2026-11-03 files.
+
+The `mentions_expected` diagnostic in these two files was produced before it was made not
+applicable to `no_match` queries: their `by_kind.no_match` and `overall` figures count the
+`no_match` runs as zero (overall 0.90 for Haiku, 0.91 for Sonnet). The tables above leave that column out; computed over the
+queries that have an expected id, it is 0.99 for Haiku (119 of 120 runs) and 1.00 for Sonnet. The
+files are as the run wrote them and were not edited.
 
 ## Development
 

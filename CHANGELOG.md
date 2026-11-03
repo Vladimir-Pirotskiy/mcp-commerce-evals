@@ -36,6 +36,12 @@ First release.
   with more than ten right answers can reach 1.0.
 - The assistant-level run retries request timeouts and failed connects like it retries HTTP 429.
 
+### Added (results)
+
+- Measured results: tool-level (`results/tool-level-2026-11-03.json`) and assistant-level runs of
+  `claude-haiku-5-5` (3 trials) and `claude-sonnet-5-5` (1 trial), all from commit `e0f398e`, with
+  the findings in the README.
+
 ### Fixed
 
 - The assistant report no longer scores `mentions_expected` for `no_match` queries, which expect
