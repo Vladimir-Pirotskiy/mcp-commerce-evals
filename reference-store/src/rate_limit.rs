@@ -54,6 +54,11 @@ pub const MAX_CLIENTS: usize = 10_000;
 /// documentation for why it is larger, and what it costs.
 pub const OVERFLOW_FACTOR: u32 = 10;
 
+/// Least time between two sweeps forced by a full table. Shorter than any sensible window, so a
+/// freed slot is found within a second, and long enough that a flood of new addresses sweeps once
+/// a second at most instead of once per request.
+const FULL_TABLE_SWEEP_GAP: Duration = Duration::from_secs(1);
+
 /// Bits of an IPv6 address that name a client: one subscriber usually owns a whole /64.
 const IPV6_PREFIX_BITS: u32 = 64;
 
@@ -77,6 +82,8 @@ struct Table {
     clients: HashMap<IpAddr, Window>,
     overflow: Window,
     last_prune: Instant,
+    /// How many times the whole table has been swept; read by the tests.
+    sweeps: u64,
 }
 
 /// Allows `limit` requests per client in each `window`.
@@ -107,6 +114,7 @@ impl RateLimiter {
                 clients: HashMap::new(),
                 overflow: Window::new(now),
                 last_prune: now,
+                sweeps: 0,
             }),
         }
     }
@@ -116,25 +124,35 @@ impl RateLimiter {
         let mut table = self.table.lock().unwrap_or_else(PoisonError::into_inner);
         if now.duration_since(table.last_prune) >= self.window {
             // At most one sweep per window keeps the cost per request constant on average.
-            table
-                .clients
-                .retain(|_, w| now.duration_since(w.start) < self.window);
-            table.last_prune = now;
+            self.sweep(&mut table, now);
+        }
+        if !table.clients.contains_key(&client)
+            && table.clients.len() >= self.max_clients
+            && now.duration_since(table.last_prune) >= FULL_TABLE_SWEEP_GAP
+        {
+            // Full: windows that ended since the last sweep are dead weight, so free them before
+            // pushing a newcomer into the shared overflow bucket. Rate-limited through
+            // `last_prune`, so a flood of new addresses cannot make every request walk the map.
+            self.sweep(&mut table, now);
         }
         let Table {
             clients, overflow, ..
         } = &mut *table;
-        if !clients.contains_key(&client) && clients.len() >= self.max_clients {
-            // Full: windows that ended since the last sweep are dead weight, so free them before
-            // pushing a newcomer into the shared overflow bucket.
-            clients.retain(|_, w| now.duration_since(w.start) < self.window);
-        }
         if clients.contains_key(&client) || clients.len() < self.max_clients {
             let slot = clients.entry(client).or_insert_with(|| Window::new(now));
             self.count(slot, self.limit, now)
         } else {
             self.count(overflow, self.overflow_limit, now)
         }
+    }
+
+    /// Drops every client whose window has ended and records when it happened.
+    fn sweep(&self, table: &mut Table, now: Instant) {
+        table
+            .clients
+            .retain(|_, w| now.duration_since(w.start) < self.window);
+        table.last_prune = now;
+        table.sweeps += 1;
     }
 
     fn count(&self, slot: &mut Window, limit: u32, now: Instant) -> Result<(), Duration> {
@@ -318,6 +336,21 @@ mod tests {
             "tracked, not overflowed"
         );
         assert_eq!(table.overflow.used, 0);
+    }
+
+    #[test]
+    fn a_flood_of_new_clients_on_a_full_table_does_not_sweep_per_request() {
+        let limiter = RateLimiter::with_capacity(1, MINUTE, 2);
+        let t0 = Instant::now();
+        assert!(limiter.check(ip("10.0.0.1"), t0).is_ok());
+        assert!(limiter.check(ip("10.0.0.2"), t0).is_ok());
+        let before = limiter.table.lock().expect("lock").sweeps;
+        for n in 0..1000_u32 {
+            let client = IpAddr::from(std::net::Ipv4Addr::from(0x0a01_0000 + n));
+            let _ = limiter.check(client, t0 + Duration::from_millis(u64::from(n % 10)));
+        }
+        let swept = limiter.table.lock().expect("lock").sweeps - before;
+        assert!(swept <= 1, "{swept} sweeps for 1000 newcomers");
     }
 
     #[test]
