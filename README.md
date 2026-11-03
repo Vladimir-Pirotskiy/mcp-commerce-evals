@@ -406,8 +406,9 @@ What the per-query rows show:
 
 Caveats: n is 44 queries, and a kind has 1 to 8 of them. The same person wrote the catalog and the
 queries. Without a temperature the runs are not deterministic, so a rerun will differ; with three
-Haiku trials the interval treats runs of one query as independent, which they are not, so read
-pass@k and the per-query rows instead. Sonnet has a single trial, so its figure says nothing about
+Haiku trials the interval resamples whole queries, so it does not treat the three runs of a
+query as independent, but it rests on 44 queries and is wide; pass@k and the per-query rows are
+the better read. Sonnet has a single trial, so its figure says nothing about
 run-to-run spread. The numbers above come from the 2026-11-03 files.
 
 The `mentions_expected` diagnostic in these two files was produced before it was made not
