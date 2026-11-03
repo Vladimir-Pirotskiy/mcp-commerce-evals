@@ -151,10 +151,19 @@ impl Anthropic {
             };
             let status = response.status();
             let retry_after = retry_after(response.headers());
-            let reply: Value = response.json().await.unwrap_or(Value::Null);
             if status.is_success() {
-                return Ok(reply);
+                // A success whose body cannot be read or is not JSON is an error: an empty
+                // reply would look like a model that said nothing.
+                let body = response.bytes().await?;
+                return serde_json::from_slice(&body).map_err(|e| {
+                    Error::Protocol(format!(
+                        "the API answered HTTP {} with a body that is not JSON: {e}",
+                        status.as_u16()
+                    ))
+                });
             }
+            // An error status may carry any body (a proxy's HTML page); its message is optional.
+            let reply: Value = response.json().await.unwrap_or(Value::Null);
             if is_retryable(status.as_u16()) && attempt < MAX_RETRIES {
                 tokio::time::sleep(retry_after.unwrap_or_else(|| self.backoff(attempt))).await;
                 attempt += 1;

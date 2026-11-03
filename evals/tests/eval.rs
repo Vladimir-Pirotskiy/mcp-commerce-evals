@@ -159,6 +159,8 @@ struct Reply {
     status: u16,
     body: Value,
     retry_after: Option<&'static str>,
+    /// Sent as the body instead of `body`, with a non-JSON content type.
+    raw: Option<&'static str>,
 }
 
 impl Reply {
@@ -167,6 +169,14 @@ impl Reply {
             status,
             body,
             retry_after: None,
+            raw: None,
+        }
+    }
+
+    fn html(status: u16, page: &'static str) -> Self {
+        Self {
+            raw: Some(page),
+            ..Self::new(status, Value::Null)
         }
     }
 }
@@ -182,7 +192,7 @@ async fn messages(
     State(mock): State<Arc<MockApi>>,
     headers: HeaderMap,
     Json(body): Json<Value>,
-) -> (StatusCode, HeaderMap, Json<Value>) {
+) -> Response {
     let key = headers
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
@@ -199,11 +209,14 @@ async fn messages(
     if let Some(seconds) = reply.retry_after {
         out_headers.insert("retry-after", seconds.parse().expect("header value"));
     }
-    (
-        StatusCode::from_u16(reply.status).expect("status"),
-        out_headers,
-        Json(reply.body),
-    )
+    let status = StatusCode::from_u16(reply.status).expect("status");
+    match reply.raw {
+        Some(page) => {
+            out_headers.insert("content-type", "text/html".parse().expect("header value"));
+            (status, out_headers, page).into_response()
+        }
+        None => (status, out_headers, Json(reply.body)).into_response(),
+    }
 }
 
 async fn spawn_mock(script: Vec<Reply>) -> (Server, Arc<MockApi>) {
@@ -1428,5 +1441,31 @@ async fn cli_without_queries_uses_the_built_in_file_from_any_directory() {
         report["meta"]["queries_sha256"],
         mcp_commerce_evals::hash::sha256_hex(&shipped),
         "the hash is of the bytes the run used"
+    );
+}
+
+#[tokio::test]
+async fn a_200_that_is_not_json_is_an_error_not_an_empty_reply() {
+    let store = spawn_store().await;
+    let (api_server, _) = spawn_mock(vec![Reply::html(200, "<html>maintenance</html>")]).await;
+
+    let result = ask(&client(&api_server, "k"), &store, "X-1").await;
+
+    let error = result.error.expect("a body that is not JSON is an error");
+    assert!(error.contains("JSON"), "{error}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cli_exits_2_when_the_api_answers_200_with_html() {
+    let store = spawn_store().await;
+    let script = vec![Reply::html(200, "<html>maintenance</html>"); 8];
+    let (api_server, _) = spawn_mock(script).await;
+
+    let (code, stderr, report) = run_cli_assistant(&store, &api_server, &[], "html-200").await;
+
+    assert_eq!(code, 2, "{stderr}");
+    assert!(
+        report["assistant_level"]["queries"][0]["error"].is_string(),
+        "{report}"
     );
 }
