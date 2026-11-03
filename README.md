@@ -94,36 +94,74 @@ and the part ids that count as a correct answer (any one of them is enough).
 
 | Kind | n | Example |
 |---|---:|---|
-| exact_part_number | 6 | a part number typed as printed on the box |
+| exact_part_number | 5 | a part number typed as printed on the box |
 | plain_description | 8 | "long-cage clutch rear derailleur for 12 speed" |
 | compatibility | 8 | "rear hub for a 12x142 thru axle frame with an 11-speed disc brake setup" |
 | typo | 6 | misspelled words in an otherwise ordinary query |
 | synonym | 6 | the buyer's word is not the catalog's word |
 | filter | 6 | "11-speed chain, in stock, under $30" |
+| adversarial | 1 | q06 types the letter O for a zero in a part number |
 
 The expected ids come from catalog attributes (every chain with `speed = 11-speed`, in stock, under
-$30), never from running the search, so the search cannot mark its own homework. Some queries are
-meant to fail: q06 types the letter O for a zero in a part number.
+$30), never from running the search, so the search cannot mark its own homework. That claim is
+checkable: `evals/tests/expected_sets.rs` holds one plain predicate per query (attributes, brand,
+price, stock) and asserts that the ids it selects from the seeded catalog equal the ones in
+`queries.json`. It never calls the search. Run it with
+`cargo test -p mcp-commerce-evals --test expected_sets`.
 
 A filter query also carries a `search` object, the arguments an assistant would build from the
-sentence. The tool-level run sends that object as is; plain queries send `{"query": text}`.
+sentence. The tool-level run sends that object as is; plain queries send `{"query": text}`. Those
+arguments define the expected set themselves (price, stock), so filter queries test filtering,
+not ranking, and the headline is shown twice: over all queries and over all except `filter`. The
+`search` object of q35 has no `category`, although the tool accepts one: the other filter queries
+(q36, q40) leave it out the same way, an assistant often sends only the words of the sentence, and
+the failure it causes (chain lubes outrank chains) is a fair finding about the store's ranking. I
+left it rather than tune the query to the store.
 
 **Tool-level (default, no key).** For each query the CLI calls the search tool over HTTP and
-compares the returned ids with the expected ones. It reports, per kind and overall:
+compares the returned ids with the expected ones. It reads at most `--top-k` results (default 10)
+whatever the store returns, keeps only the first position of a repeated id, and keeps an entry
+without a recognisable id as an empty rank so later results do not move up. It reports, per kind
+and overall:
 
-- hit@1 and hit@5: share of queries with an expected part in the first 1 or 5 results;
+- hit@1 and hit@5: share of queries with an expected part in the first 1 or 5 results, each with a
+  95% Wilson interval;
 - MRR: mean of 1 / rank of the best expected part, 0 when it is not in the top 10;
-- latency: p50 and p95 of the round trip, nearest-rank, errors excluded.
+- recall@10: share of a query's expected ids found in the top 10, averaged over queries (a query
+  with 17 expected ids cannot reach 1.0 at `--top-k 5`);
+- nDCG@10 with binary relevance;
+- latency: p50 and p95 of the round trip, nearest-rank in integer arithmetic, errors excluded.
+  `--repeat N` times each query N times after one untimed warm-up call.
 
-A failed call counts as a miss, so a broken server cannot score well. Use `--search-tool` for a
-store whose tool has another name; results are read from `results`, `products`, `items` or `hits`,
-and each entry's `id`, `sku`, `part_number` or `product_id`.
+A failed call counts as a miss, so a broken server cannot score well. A reply that has no list
+under `results`, `products`, `items` or `hits`, or that is neither structured content nor JSON
+text, is an error for that query, not an empty result. Use `--search-tool` for a store whose tool
+has another name; each entry's id is read from `id`, `sku`, `part_number` or `product_id`.
+
+The process exits 0 on success, 1 when the run could not complete, 2 when any query errored and 3
+when a gate was not met: `--min-hit5 <f64>` and `--min-mrr <f64>` compare against the "all" row
+and the failed gate is printed. The JSON report is written first, and `--out` refuses to replace an
+existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
+the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
+the server's `serverInfo` and negotiated protocol version, and for assistant runs the model,
+temperature, `max_turns` and a hash of the system prompt. `--timeout-secs` (default 60) bounds every
+HTTP request, to the store and to the model API.
 
 **Assistant-level (optional, costs tokens).** `--assistant anthropic` gives a model the store's
 tools through the Anthropic Messages API and lets it work until it answers, at most `--max-turns`
-(default 8). The answer counts as correct when it names an expected part number. The report adds
-tool calls per query and input and output tokens, which is where a store with vague tool
-descriptions shows up: the model needs more calls to get to the same answer.
+(default 8), at temperature 0. The system prompt does not name a kind of store and asks the model
+to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
+only when that committed id equals an expected id after normalising case and punctuation; whether
+the reply merely mentions an expected id is kept as a separate diagnostic (`mentions_expected`).
+Only a `stop_reason` of `end_turn` is a final answer: `max_tokens`, `refusal`, `pause_turn` or
+anything else is recorded per query and counted as unanswered. The client retries HTTP 429, 529
+and 5xx up to three times with exponential backoff and jitter, honouring `retry-after`, and
+refuses an empty `ANTHROPIC_API_KEY` before any request. Accuracy is reported over all queries
+and over the queries without API errors, next to the error count. The report adds tool calls per
+query and input and output tokens, which is where a store with vague tool descriptions shows up:
+the model needs more calls to get to the same answer. The report file is rewritten after every
+query, with `"complete": false` until the end, so a paid run that fails midway leaves its partial
+results.
 
 ```sh
 export ANTHROPIC_API_KEY=...        # read from the environment only, never from argv
@@ -131,10 +169,11 @@ cargo run --release -p mcp-commerce-evals -- --assistant anthropic --model claud
 ```
 
 I did not run this mode against the live API. Its loop is tested against a mock of the API (tool
-call, tool result, final answer, token counts, an HTTP 401 whose message must not contain the key),
-but the request shape comes from the API documentation, not from a live call, and I have not
-checked that the API accepts the `$schema` field the store's input schemas carry. No assistant-level
-numbers are published here for that reason.
+call, tool result, the committed answer, each stop reason, a 429 that is retried, a 401 whose
+message must not contain the key, a request timeout, token counts), but the request shape comes
+from the API documentation, not from a live call, and I have not checked that the API accepts the
+`$schema` field the store's input schemas carry. No assistant-level numbers are published here for
+that reason.
 
 The store itself was checked with a real MCP client on 2026-11-03: Claude Code (`claude -p`, Haiku,
 the store as its only server through `--mcp-config`) was asked for "an 11-speed chain that is in
@@ -145,28 +184,35 @@ every `uint32` and `double` format schemars writes for Rust numbers; the store n
 
 ## Results
 
-Tool-level run on 2026-11-02, release build, store and CLI on the same machine (Apple M4 Max,
-64 GiB, macOS 27.2), loopback, one run of 40 queries, `--top-k 10`:
+Tool-level run on 2026-11-03, release build, store and CLI on the same machine (Apple M4 Max,
+64 GiB, macOS 27.2), loopback, one run of 40 queries, `--top-k 10`, `--repeat 1`, build of git
+commit `5c5b3f1` (its `meta` block is in the file):
 
 ```sh
 cargo build --release --workspace
 ./target/release/reference-store &
 ./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp \
-  --out results/tool-level-2026-11-02.json
+  --out results/tool-level-2026-11-03.json
 ```
 
-| kind | queries | hit@1 | hit@5 | MRR | p50 ms | p95 ms |
-|---|---:|---:|---:|---:|---:|---:|
-| compatibility | 8 | 0.88 | 0.88 | 0.89 | 0.2 | 0.4 |
-| exact_part_number | 6 | 0.83 | 0.83 | 0.85 | 0.3 | 0.6 |
-| filter | 6 | 0.83 | 0.83 | 0.83 | 0.2 | 0.2 |
-| plain_description | 8 | 0.88 | 1.00 | 0.92 | 0.2 | 0.3 |
-| synonym | 6 | 1.00 | 1.00 | 1.00 | 0.3 | 0.3 |
-| typo | 6 | 1.00 | 1.00 | 1.00 | 0.3 | 0.4 |
-| **all** | 40 | 0.90 | 0.93 | 0.91 | 0.2 | 0.4 |
+Intervals are 95% Wilson; p50 and p95 are milliseconds.
 
-The full per-query output is in `results/tool-level-2026-11-02.json`. Four queries were not ranked
-first:
+| kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 | nDCG@10 | MRR | p50 ms | p95 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 | 0.30 | 0.11 | 0.26 | 0.26 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.87 | 0.89 | 0.89 | 0.33 | 0.52 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 | 1.00 | 1.00 | 0.46 | 0.70 |
+| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 | 0.83 | 0.83 | 0.25 | 0.40 |
+| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 | 0.94 | 0.92 | 0.31 | 0.44 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 | 1.00 | 1.00 | 0.42 | 0.61 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 | 1.00 | 1.00 | 0.41 | 0.58 |
+| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.95 | 0.92 | 0.91 | 0.37 | 0.58 |
+| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.97 | 0.94 | 0.93 | 0.38 | 0.61 |
+
+The full per-query output is in `results/tool-level-2026-11-03.json`. The rankings are identical
+to the first run, `results/tool-level-2026-11-02.json`, which is kept: that file predates the
+`meta` block, the intervals and the changes to how replies are read, and it counts q06 under
+`exact_part_number`. Four queries were not ranked first:
 
 | id | query | rank | what happened |
 |---|---|---:|---|
@@ -175,11 +221,13 @@ first:
 | q22 | rear hub for a 12x142 thru axle frame with an 11-speed disc brake setup | 9 | Axle parts outrank hubs. |
 | q35 | 11-speed chain, in stock, under $30 | none | The `search` object says `query: "chain"` without a category, and chain lubes rank above chains. With `category: "chain"` the chains come first. |
 
-Read these numbers with care. 40 queries is small: one query moves a rate by 2.5 points, and per
-kind by 12 to 17. The catalog and the queries were written together, by the same person, so this
-shows that the harness measures and that the store works; it does not rank search engines. Latency
-is a loopback round trip to an in-memory index, not a network or database figure. Rankings are
-deterministic for a given seed; latency varies from run to run.
+Read these numbers with care. 40 queries is small: one query moves a rate by 2.5 points, and the
+intervals show how wide the uncertainty is, from 0.44 to 0.97 for a kind of six. The one
+adversarial query is a single data point, and its interval spans most of the scale. The catalog
+and the queries were written together, by the same person, so this shows that the harness
+measures and that the store works; it does not rank search engines. Latency is a loopback round
+trip to an in-memory index, not a network or database figure, from one run after one warm-up
+call. Rankings are deterministic for a given seed; latency varies from run to run.
 
 ## Development
 
@@ -200,7 +248,9 @@ cargo +nightly generate-lockfile -Zunstable-options --publish-time 2026-10-19T00
 The tests need no network and no key. The integration test starts the store on a random port inside
 the test process and runs the whole tool-level eval against it, with a floor on hit@5 and MRR and
 a requirement that the first five queries (exact part numbers) rank first. Another test checks
-that every expected id exists in the demo catalog.
+that every expected id exists in the demo catalog, and `expected_sets` rederives every expected set
+from catalog attributes. The assistant loop, the retries, the exit codes and the report metadata
+are tested against mocks and the in-process store.
 
 ## Limitations
 
