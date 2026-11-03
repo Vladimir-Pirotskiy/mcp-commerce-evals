@@ -299,10 +299,16 @@ pub struct AssistantResult {
     /// Why the run failed (API or transport), when it did.
     pub error: Option<String>,
     /// Which repetition of the query this is, from 1 (`--trials`).
+    #[serde(default = "first_trial")]
     pub trial: u32,
     /// The distinct `model` ids the API named in its replies, in order of first appearance. The
     /// request names an alias; this is what actually answered.
+    #[serde(default)]
     pub models: Vec<String>,
+}
+
+fn first_trial() -> u32 {
+    1
 }
 
 /// Whether `answer` contains one of the expected part ids, ignoring case and punctuation.

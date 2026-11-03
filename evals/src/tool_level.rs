@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use crate::error::{Error, Result, ShapeProblem};
@@ -32,7 +32,7 @@ pub struct Options {
 }
 
 /// The outcome of one query.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryResult {
     /// Query id.
     pub id: String,
@@ -50,6 +50,7 @@ pub struct QueryResult {
     /// Round-trip time in milliseconds of each timed call; empty when the query errored.
     pub latencies_ms: Vec<f64>,
     /// Why the call failed, when it did.
+    #[serde(default)]
     pub error: Option<String>,
     /// True when `--repeat` made several calls and their ranked ids were not all the same, so
     /// `returned` (the first call) is one of several answers the store gives.
@@ -97,6 +98,34 @@ impl ToolLevelReport {
     #[must_use]
     pub fn error_count(&self) -> usize {
         self.overall.errors + self.no_match.as_ref().map_or(0, |m| m.errors)
+    }
+
+    /// Scores `results`: every aggregate is computed from the per-query entries, so a saved
+    /// report can be scored again by the current code.
+    #[must_use]
+    pub fn from_results(results: Vec<QueryResult>) -> Self {
+        let (no_match, ranked): (Vec<&QueryResult>, Vec<&QueryResult>) =
+            results.iter().partition(|r| r.kind == NO_MATCH_KIND);
+        let mut kinds: BTreeMap<&str, Vec<&QueryResult>> = BTreeMap::new();
+        for result in &ranked {
+            kinds.entry(result.kind.as_str()).or_default().push(result);
+        }
+        let without_filter: Vec<&QueryResult> = ranked
+            .iter()
+            .copied()
+            .filter(|r| r.kind != FILTER_KIND)
+            .collect();
+        ToolLevelReport {
+            overall: summarize(&ranked),
+            overall_without_filter: summarize(&without_filter),
+            by_kind: kinds
+                .iter()
+                .map(|(kind, rs)| ((*kind).to_owned(), summarize(rs)))
+                .collect(),
+            no_match: no_match_summary(&no_match),
+            nondeterministic_queries: results.iter().filter(|r| r.nondeterministic).count(),
+            queries: results,
+        }
     }
 }
 
@@ -266,28 +295,7 @@ pub async fn run(mcp: &mut McpClient, queries: &[Query], options: &Options) -> T
     for query in queries {
         results.push(run_one(mcp, query, options).await);
     }
-    let (no_match, ranked): (Vec<&QueryResult>, Vec<&QueryResult>) =
-        results.iter().partition(|r| r.kind == NO_MATCH_KIND);
-    let mut kinds: BTreeMap<&str, Vec<&QueryResult>> = BTreeMap::new();
-    for result in &ranked {
-        kinds.entry(result.kind.as_str()).or_default().push(result);
-    }
-    let without_filter: Vec<&QueryResult> = ranked
-        .iter()
-        .copied()
-        .filter(|r| r.kind != FILTER_KIND)
-        .collect();
-    ToolLevelReport {
-        overall: summarize(&ranked),
-        overall_without_filter: summarize(&without_filter),
-        by_kind: kinds
-            .iter()
-            .map(|(kind, rs)| ((*kind).to_owned(), summarize(rs)))
-            .collect(),
-        no_match: no_match_summary(&no_match),
-        nondeterministic_queries: results.iter().filter(|r| r.nondeterministic).count(),
-        queries: results,
-    }
+    ToolLevelReport::from_results(results)
 }
 
 #[cfg(test)]

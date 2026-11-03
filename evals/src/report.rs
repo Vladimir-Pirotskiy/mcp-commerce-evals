@@ -4,14 +4,14 @@ use std::fmt::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::assistant::{AssistantReport, AssistantSummary};
+use crate::assistant::{AssistantReport, AssistantResult, AssistantSummary};
 use crate::error::{Error, Result};
 use crate::meta::Meta;
 use crate::metrics::{Interval, Summary};
 use crate::queries::NO_MATCH_KIND;
-use crate::tool_level::ToolLevelReport;
+use crate::tool_level::{QueryResult, ToolLevelReport};
 
 /// Everything one run produced; this is what `--out` writes.
 #[derive(Debug, Serialize)]
@@ -46,6 +46,61 @@ impl EvalReport {
         std::fs::write(path, json + "\n")
             .map_err(|e| Error::Input(format!("cannot write {}: {e}", path.display())))
     }
+}
+
+/// The part of a saved report that the scores come from: the per-query entries. Every summary in
+/// the file is ignored and computed again, so the report code of today decides the intervals, and
+/// a file written by an older version still reads.
+#[derive(Deserialize)]
+struct SavedReport {
+    tool_level: SavedToolLevel,
+    #[serde(default)]
+    assistant_level: Option<SavedAssistant>,
+}
+
+#[derive(Deserialize)]
+struct SavedToolLevel {
+    queries: Vec<QueryResult>,
+}
+
+#[derive(Deserialize)]
+struct SavedAssistant {
+    model: String,
+    #[serde(default)]
+    temperature: Option<f64>,
+    #[serde(default = "one")]
+    trials: u32,
+    queries: Vec<AssistantResult>,
+}
+
+fn one() -> u32 {
+    1
+}
+
+/// Renders the Markdown for a saved `--out` file with the current report code. It reads the
+/// per-query entries only, makes no network call, and scores them again.
+///
+/// # Errors
+///
+/// Fails when `json` is not a report: no `tool_level.queries`, or entries of the wrong shape.
+pub fn render_saved(json: &str) -> Result<String> {
+    let saved: SavedReport = serde_json::from_str(json)?;
+    let tool_level = ToolLevelReport::from_results(saved.tool_level.queries);
+    let mut out = format!(
+        "Tool-level ({} queries)\n\n{}",
+        tool_level.queries.len(),
+        tool_level_markdown(&tool_level)
+    );
+    if let Some(saved) = saved.assistant_level {
+        let report = AssistantReport::from_results(
+            &saved.model,
+            saved.temperature,
+            saved.trials,
+            saved.queries,
+        );
+        let _ = write!(out, "\nAssistant-level\n\n{}", assistant_markdown(&report));
+    }
+    Ok(out)
 }
 
 /// `value` to two places; a zero that is negative (or rounds to one) prints as `0.00`.

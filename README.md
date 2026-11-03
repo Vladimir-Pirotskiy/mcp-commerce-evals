@@ -198,6 +198,11 @@ choice, so the tool level only describes it. At the assistant level they count: 
 
 `--kind <kind>` (repeatable) runs only queries of those kinds; the report's `meta` records them.
 
+`mcp-commerce-evals render <results.json>` prints the Markdown tables for a saved report without
+any network call. It reads only the per-query entries and scores them again, so the intervals and
+columns follow the current report code, and a file written by an older version still reads
+(fields added later default to an empty or zero value).
+
 The process exits 0 on success, 1 when the run could not complete, 2 when any query errored (in
 the tool-level or the assistant-level run) and 3 when a gate was not met: `--min-hit5 <f64>` and
 `--min-mrr <f64>` compare against the "all" row, `--min-accuracy <f64>` against the
@@ -327,39 +332,47 @@ No run ended in an API error or without a final answer. The files are
 ```
 
 A run is correct when its `ANSWER:` line commits to an expected id (`none` for a `no_match` query).
-Intervals are 95% Wilson and count every run as independent. These tables, and the tool-level
-table before the 2026-11-03 rerun, were produced by v0.1.0-pre code (Wilson intervals only, no
-cluster bootstrap); the report code cannot re-render a saved file, and re-running costs API
-tokens, so they are left as written.
+The tables below are the output of `mcp-commerce-evals render` on the two saved files, made with
+the report code of this commit; no API call was made and the model was not asked again. `render`
+scores the per-run entries again and ignores the summaries stored in the file, which the older
+build `e0f398e` wrote with Wilson intervals only (those stored figures are unchanged). Nothing was
+missing: both files keep every run with its `trial` number, which is what the cluster bootstrap
+needs. So Haiku's intervals resample whole queries (3 trials each), and a kind with fewer than 10
+queries, or one that scored the same in every run, reads `n/a`; the overall Haiku interval moved
+from 0.88-0.97 (Wilson, runs counted as independent) to 0.87-0.99. Sonnet ran one trial per query,
+so its intervals are Wilson. The columns `wrong id` (committed an id that is not expected, `none`
+included) and `no ANSWER line` (finished its turn without committing) are new; they were computed
+from the per-run `committed` field. A test (`evals/tests/saved_results.rs`) fails when a row
+rendered from a committed file is missing from this README.
 
 **claude-haiku-5-5**, 3 trials per query: pass@1 0.94, pass@2 0.95, pass@3 0.95. Tokens over all 132
 runs: 1,196,419 input and 76,890 output.
 
-| kind | runs | committed answer correct (95% CI) | tool calls per query | input tokens | output tokens |
-|---|---:|---:|---:|---:|---:|
-| adversarial | 3 | 0.67 (0.21-0.94) | 3.7 | 42,451 | 2,869 |
-| compatibility | 24 | 0.88 (0.69-0.96) | 1.5 | 197,436 | 15,026 |
-| exact_part_number | 15 | 1.00 (0.80-1.00) | 1.1 | 94,366 | 4,896 |
-| filter | 18 | 1.00 (0.82-1.00) | 1.0 | 118,650 | 10,351 |
-| no_match | 12 | 1.00 (0.76-1.00) | 2.9 | 194,862 | 6,821 |
-| plain_description | 24 | 1.00 (0.86-1.00) | 2.5 | 254,538 | 13,035 |
-| synonym | 18 | 0.94 (0.74-0.99) | 1.5 | 139,987 | 10,661 |
-| typo | 18 | 0.83 (0.61-0.94) | 1.3 | 154,129 | 13,231 |
-| **all** | 132 | 0.94 (0.88-0.97) | 1.7 | 1,196,419 | 76,890 |
+| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| adversarial | 3 | 0.67 (n/a) | 0.67 | 1.00 | 1 | 0 | 0 | 0 | 3.7 | 42451 | 2869 |
+| compatibility | 24 | 0.88 (n/a) | 0.88 | 0.96 | 0 | 3 | 0 | 0 | 1.5 | 197436 | 15026 |
+| exact_part_number | 15 | 1.00 (n/a) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 1.1 | 94366 | 4896 |
+| filter | 18 | 1.00 (n/a) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 1.0 | 118650 | 10351 |
+| no_match | 12 | 1.00 (n/a) | 1.00 | n/a | 0 | 0 | 0 | 0 | 2.9 | 194862 | 6821 |
+| plain_description | 24 | 1.00 (n/a) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 2.5 | 254538 | 13035 |
+| synonym | 18 | 0.94 (n/a) | 0.94 | 1.00 | 0 | 1 | 0 | 0 | 1.5 | 139987 | 10661 |
+| typo | 18 | 0.83 (n/a) | 0.83 | 1.00 | 3 | 0 | 0 | 0 | 1.3 | 154129 | 13231 |
+| **all** | 132 | 0.94 (0.87-0.99) | 0.94 | 0.99 | 4 | 4 | 0 | 0 | 1.7 | 1196419 | 76890 |
 
 **claude-sonnet-5-5**, 1 trial per query. Tokens over all 44 runs: 473,526 input and 19,703 output.
 
-| kind | runs | committed answer correct (95% CI) | tool calls per query | input tokens | output tokens |
-|---|---:|---:|---:|---:|---:|
-| adversarial | 1 | 1.00 (0.21-1.00) | 4.0 | 15,318 | 590 |
-| compatibility | 8 | 0.88 (0.53-0.98) | 2.4 | 94,324 | 4,390 |
-| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.8 | 35,770 | 1,140 |
-| filter | 6 | 1.00 (0.61-1.00) | 1.2 | 45,297 | 2,551 |
-| no_match | 4 | 1.00 (0.51-1.00) | 3.0 | 58,661 | 1,552 |
-| plain_description | 8 | 1.00 (0.68-1.00) | 2.5 | 101,691 | 3,338 |
-| synonym | 6 | 1.00 (0.61-1.00) | 2.2 | 71,747 | 2,934 |
-| typo | 6 | 1.00 (0.61-1.00) | 1.2 | 50,718 | 3,208 |
-| **all** | 44 | 0.98 (0.88-1.00) | 2.1 | 473,526 | 19,703 |
+| kind | queries | committed answer correct (95% CI) | correct, API errors excluded | mentions expected | wrong id | no ANSWER line | unfinished | API errors | tool calls per query | input tokens | output tokens |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| adversarial | 1 | 1.00 (0.21-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 4.0 | 15318 | 590 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 | 1.00 | 1 | 0 | 0 | 0 | 2.4 | 94324 | 4390 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 1.8 | 35770 | 1140 |
+| filter | 6 | 1.00 (0.61-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 1.2 | 45297 | 2551 |
+| no_match | 4 | 1.00 (0.51-1.00) | 1.00 | n/a | 0 | 0 | 0 | 0 | 3.0 | 58661 | 1552 |
+| plain_description | 8 | 1.00 (0.68-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 2.5 | 101691 | 3338 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 2.2 | 71747 | 2934 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 | 1.00 | 0 | 0 | 0 | 0 | 1.2 | 50718 | 3208 |
+| **all** | 44 | 0.98 (0.88-1.00) | 0.98 | 1.00 | 1 | 0 | 0 | 0 | 2.1 | 473526 | 19703 |
 
 What the per-query rows show:
 

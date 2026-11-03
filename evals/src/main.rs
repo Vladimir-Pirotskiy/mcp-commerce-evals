@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use mcp_commerce_evals::assistant::{self, Anthropic, ApiKey, Plan};
 use mcp_commerce_evals::error::{Error, Result};
 use mcp_commerce_evals::gate::{self, Gates};
 use mcp_commerce_evals::mcp::McpClient;
 use mcp_commerce_evals::meta::{AssistantMeta, Meta, RunSettings};
-use mcp_commerce_evals::report::{EvalReport, assistant_markdown, tool_level_markdown};
+use mcp_commerce_evals::report::{
+    EvalReport, assistant_markdown, render_saved, tool_level_markdown,
+};
 use mcp_commerce_evals::{queries, tool_level};
 
 /// Which model API drives the assistant-level run.
@@ -27,8 +29,10 @@ enum Provider {
 /// a --min-* gate was not met (the report is written first). A run whose report is incomplete
 /// is a failure to complete, so it exits 1.
 #[derive(Parser)]
-#[command(version, about)]
+#[command(version, about, args_conflicts_with_subcommands = true)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
     /// MCP endpoint of the store (Streamable HTTP).
     #[arg(long, default_value = "http://127.0.0.1:8787/mcp")]
     url: String,
@@ -90,6 +94,16 @@ struct Args {
     trials: u32,
 }
 
+#[derive(Subcommand)]
+enum Command {
+    /// Print the Markdown report for a saved results file, scored again by this version's
+    /// report code. Makes no network call and writes nothing.
+    Render {
+        /// A JSON file written by `--out`, of any version of this tool.
+        results: PathBuf,
+    },
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     match run(Args::parse()).await {
@@ -129,7 +143,17 @@ fn anthropic_client(args: &Args, timeout: Duration) -> Result<Option<Anthropic>>
     }
 }
 
+fn render(path: &Path) -> Result<u8> {
+    let json = std::fs::read_to_string(path)
+        .map_err(|e| Error::Input(format!("cannot read {}: {e}", path.display())))?;
+    println!("{}", render_saved(&json)?);
+    Ok(0)
+}
+
 async fn run(args: Args) -> Result<u8> {
+    if let Some(Command::Render { results }) = &args.command {
+        return render(results);
+    }
     refuse_to_overwrite(&args.out, args.force)?;
     let timeout = Duration::from_secs(args.timeout_secs);
     let queries_path = args.queries.clone().unwrap_or_else(queries::default_path);
