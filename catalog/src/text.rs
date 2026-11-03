@@ -8,6 +8,9 @@ const STOPWORDS: &[&str] = &[
 ];
 
 /// Query-side synonyms: a (normalized) buyer word and the catalog words it may stand for.
+/// Shortest buyer word that may match a synonym key with a typo; shorter words are too ambiguous.
+const MIN_TYPO_SYNONYM_CHARS: usize = 5;
+
 const SYNONYMS: &[(&str, &[&str])] = &[
     ("tyre", &["tire"]),
     ("cogset", &["cassette"]),
@@ -137,10 +140,11 @@ pub fn query_tokens(input: &str) -> Vec<String> {
     out
 }
 
-/// Catalog words a buyer word may stand for; a word of five or more letters may also be one
-/// typo away from the synonym.
-pub fn synonyms(token: &str) -> &'static [&'static str] {
-    let typo_ok = token.chars().count() >= 5;
+/// Catalog words a buyer word may stand for. With `allow_typo`, a word of five or more letters
+/// also matches a synonym key one typo away; pass `false` for a word the catalog already uses,
+/// or "black" would reach the key "block" and pull in brake pads.
+pub fn synonyms(token: &str, allow_typo: bool) -> &'static [&'static str] {
+    let typo_ok = allow_typo && token.chars().count() >= MIN_TYPO_SYNONYM_CHARS;
     SYNONYMS
         .iter()
         .find(|(word, _)| *word == token || (typo_ok && distance_within(word, token, 1).is_some()))
@@ -170,31 +174,71 @@ pub fn compact(input: &str) -> String {
         .collect()
 }
 
+/// Longest word, in characters, that [`distance_within`] compares; a longer, different word is
+/// never a typo of anything in the vocabulary. The cap keeps the rows on the stack.
+const MAX_WORD_CHARS: usize = 64;
+
+/// A cell outside the band or past the budget; half of `usize::MAX` so adding one cannot overflow.
+const BEYOND_BAND: usize = usize::MAX / 2;
+
+type Row = [usize; MAX_WORD_CHARS + 1];
+
+fn chars_of(word: &str) -> Option<([char; MAX_WORD_CHARS], usize)> {
+    let mut out = ['\0'; MAX_WORD_CHARS];
+    let mut len = 0;
+    for c in word.chars() {
+        *out.get_mut(len)? = c;
+        len += 1;
+    }
+    Some((out, len))
+}
+
 /// Edit distance (insert, delete, substitute, swap neighbours) if it is at most `max`.
+///
+/// Only the diagonal band of width `2 * max + 1` is computed and the scan stops as soon as a
+/// whole row exceeds `max`, so a call costs `O(max * len)` and never allocates. It runs once per
+/// vocabulary term for every query word that is not itself a term.
 pub fn distance_within(a: &str, b: &str, max: usize) -> Option<usize> {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    if a.len().abs_diff(b.len()) > max {
+    if a == b {
+        return Some(0);
+    }
+    let ((a, a_len), (b, b_len)) = (chars_of(a)?, chars_of(b)?);
+    if a_len.abs_diff(b_len) > max {
         return None;
     }
-    let mut grid = vec![vec![0usize; b.len() + 1]; a.len() + 1];
-    for (i, row) in grid.iter_mut().enumerate() {
-        row[0] = i;
+    let (a, b) = (&a[..a_len], &b[..b_len]);
+    let mut older: Row = [BEYOND_BAND; MAX_WORD_CHARS + 1];
+    let mut previous: Row = [BEYOND_BAND; MAX_WORD_CHARS + 1];
+    for (j, cell) in previous.iter_mut().enumerate().take(b_len.min(max) + 1) {
+        *cell = j;
     }
-    grid[0] = (0..=b.len()).collect();
-    for i in 1..=a.len() {
-        for j in 1..=b.len() {
-            let cost = usize::from(a[i - 1] != b[j - 1]);
-            let mut best = (grid[i - 1][j] + 1)
-                .min(grid[i][j - 1] + 1)
-                .min(grid[i - 1][j - 1] + cost);
-            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
-                best = best.min(grid[i - 2][j - 2] + 1);
-            }
-            grid[i][j] = best;
+    for i in 1..=a_len {
+        let mut current: Row = [BEYOND_BAND; MAX_WORD_CHARS + 1];
+        let low = i.saturating_sub(max);
+        let high = (i + max).min(b_len);
+        let mut row_best = BEYOND_BAND;
+        if low == 0 {
+            current[0] = i;
+            row_best = i;
         }
+        for j in low.max(1)..=high {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            let mut best = (previous[j] + 1)
+                .min(current[j - 1] + 1)
+                .min(previous[j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                best = best.min(older[j - 2] + 1);
+            }
+            current[j] = best;
+            row_best = row_best.min(best);
+        }
+        if row_best > max {
+            return None;
+        }
+        older = previous;
+        previous = current;
     }
-    let d = grid[a.len()][b.len()];
+    let d = previous[b_len];
     (d <= max).then_some(d)
 }
 
@@ -258,6 +302,28 @@ mod tests {
         assert_eq!(distance_within("cassette", "casette", 1), Some(1));
         assert_eq!(distance_within("chain", "chair", 1), Some(1));
         assert_eq!(distance_within("chain", "brake", 2), None);
+    }
+
+    #[test]
+    fn distance_stops_at_the_budget_and_handles_edges() {
+        assert_eq!(distance_within("", "ab", 2), Some(2));
+        assert_eq!(distance_within("", "abc", 2), None);
+        assert_eq!(distance_within("rotor", "rotor", 0), Some(0));
+        assert_eq!(distance_within("cassette", "casette", 2), Some(1));
+        assert_eq!(distance_within("derailleur", "derailler", 2), Some(1));
+        assert_eq!(distance_within("kitten", "sitting", 2), None);
+        assert_eq!(distance_within("kitten", "sitting", 3), Some(3));
+        let long = "a".repeat(100);
+        assert_eq!(distance_within(&long, &long, 1), Some(0));
+        assert_eq!(distance_within(&long, &format!("{long}b"), 1), None);
+    }
+
+    #[test]
+    fn a_typo_of_a_synonym_key_matches_only_when_allowed() {
+        assert_eq!(synonyms("blok", true), &[] as &[&str]);
+        assert_eq!(synonyms("tyres", true), &["tire"]);
+        assert_eq!(synonyms("tyres", false), &[] as &[&str]);
+        assert_eq!(synonyms("tyre", false), &["tire"]);
     }
 
     #[test]

@@ -122,12 +122,13 @@ impl Index {
                         alternatives.push((term.to_owned(), weight));
                     }
                 };
-                if self.postings.contains_key(&token) {
+                let known = self.postings.contains_key(&token);
+                if known {
                     push(&token, 1.0);
                 } else if let Some(fixed) = self.correction(&token) {
                     push(&fixed, FUZZY_WEIGHT);
                 }
-                for synonym in synonyms(&token) {
+                for synonym in synonyms(&token, !known) {
                     push(synonym, SYNONYM_WEIGHT);
                 }
                 Slot { alternatives }

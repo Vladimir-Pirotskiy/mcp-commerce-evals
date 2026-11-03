@@ -159,6 +159,23 @@ fn a_synonym_finds_the_part() {
 }
 
 #[test]
+fn a_catalog_word_one_typo_from_a_synonym_key_is_not_rewritten() {
+    let mut tire = part("ALD-TR-4002", "Gravel Tire", Category::Tire, 40.0, &[]);
+    tire.attributes
+        .insert("colour".to_owned(), "black".to_owned());
+    let pad = part(
+        "ALD-BP-6001",
+        "Disc Brake Pad",
+        Category::BrakePads,
+        15.0,
+        &[],
+    );
+    let catalog = Catalog::new(vec![tire, pad]);
+    assert_eq!(ask(&catalog, "black"), ["ALD-TR-4002"]);
+    assert_eq!(ask(&catalog, "block")[0], "ALD-BP-6001");
+}
+
+#[test]
 fn a_tooth_range_is_found_by_its_numbers() {
     assert_eq!(ask(&shelf(), "11-34 cassette")[0], "ALD-CS-2001");
 }
