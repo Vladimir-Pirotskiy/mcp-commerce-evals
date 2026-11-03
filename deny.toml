@@ -2,14 +2,14 @@
 all-features = true
 
 [advisories]
-# Offline: the advisory database is not fetched, so this only checks the rest.
-db-urls = []
+# CI fetches the default RustSec database (`cargo deny check advisories`). Offline, run only
+# `cargo deny --offline check licenses bans sources`: those three need no database.
 yanked = "warn"
 
 [licenses]
 allow = [
-  "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause",
-  "ISC", "Unicode-3.0", "Zlib", "CDLA-Permissive-2.0", "MPL-2.0", "OpenSSL", "0BSD",
+  "MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-3-Clause",
+  "ISC", "Unicode-3.0", "CDLA-Permissive-2.0",
 ]
 
 [bans]

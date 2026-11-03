@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   pull_request:
 
 permissions:
@@ -36,8 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install cargo-deny
-        run: cargo install --locked cargo-deny
+        # Pinned so a new release cannot change what the job checks.
+        run: cargo install --locked cargo-deny --version 0.20.2
       - run: cargo deny --locked check licenses bans sources
+      - name: Check advisories
+        # Needs the network: it fetches the RustSec database.
+        run: cargo deny --locked check advisories
 
   tool-level-eval:
     runs-on: ubuntu-latest
@@ -54,8 +58,8 @@ jobs:
           curl --fail --silent --retry 20 --retry-connrefused --retry-delay 1 \
             http://127.0.0.1:8787/health
       - name: Run the tool-level eval
-        # The floors sit just under the committed results (hit@5 0.925, MRR 0.914), so a ranking
-        # regression fails the job.
+        # The floors sit at the committed values minus one query (hit@5 0.925, MRR 0.914), so a
+        # ranking regression fails the job; evals/tests/ci_floors.rs keeps them in step.
         run: |
           ./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp \
             --out eval-results.json --min-hit5 0.92 --min-mrr 0.91
