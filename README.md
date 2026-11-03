@@ -107,8 +107,16 @@ with its own budget, ten times one client's limit per window. The trade-off: evi
 clients to make room would let someone rotating addresses reset real clients' counters, and
 admitting untracked clients uncounted would fail open under exactly that flood. A shared bucket
 fails closed, bounding all untracked traffic, at the price that during an address flood newcomers
-share one budget and some get 429 undeservedly; tracked clients are unaffected. The reasoning is
-in the `rate_limit` module docs.
+share one budget and some get 429 undeservedly; tracked clients are unaffected. Before a newcomer is sent to the overflow bucket, windows that have already ended are evicted, so
+only a table full of live clients costs anyone: the newcomers, who share that one budget. The
+reasoning is in the `rate_limit` module docs. The counters live in this process: with several
+instances each has its own table and budget.
+
+`--seed` (default 2026) and `--parts` (default 500) choose the generated catalog. The queries file
+and the committed results assume the defaults; other values give another catalog. `--parts` is
+accepted up to 2000, the size the generator is proven to reach for every seed it is tested with;
+a larger value, or one the generator cannot fill with distinct parts, is refused at startup with
+an error instead of serving a shorter catalog. Prices must be whole cents from $0.01 to $10,000.
 
 `/mcp` also sheds load: at most 256 requests are handled at once (`--max-in-flight`; more get 503
 with `Retry-After`) and a request that runs past 30 seconds (`--request-timeout-secs`) gets 504.
@@ -162,16 +170,21 @@ and overall:
 
 - hit@1 and hit@5: share of queries with an expected part in the first 1 or 5 results, each with a
   95% Wilson interval;
-- MRR: mean of 1 / rank of the best expected part, 0 when it is not in the top 10;
+- MRR: mean of 1 / rank of the best expected part, 0 when it is not in the top 10 (the rank is
+  capped at the same depth as recall and nDCG, so `--top-k 100` cannot raise it);
 - capped recall@10: expected ids found in the top 10 divided by min(number expected, 10), averaged
   over queries, so a query with 17 expected ids can still reach 1.0 (plain recall would cap it at
   10/17); with a smaller `--top-k` the ceiling is lower;
 - nDCG@10 with binary relevance;
 - 95% bootstrap intervals for MRR, recall@10 and nDCG@10: 2000 resamples of the per-query scores
   with a fixed seed (a local SplitMix64, recorded in `meta.bootstrap_seed`), so the same results
-  always give the same interval;
+  always give the same interval. A percentile bootstrap of a tiny or constant sample is a
+  zero-width interval that claims certainty, so it is shown as `n/a` (null in the JSON) when there
+  are fewer than 10 queries or every query scored the same. Wilson intervals, which stay valid at
+  small n, are always shown;
 - latency: p50 and p95 of the round trip, nearest-rank in integer arithmetic, errors excluded.
-  `--repeat N` times each query N times after one untimed warm-up call.
+  `--repeat N` times each query N times after one untimed warm-up call; a query whose ranked ids
+  differ between those calls is flagged `nondeterministic` and counted in the report.
 
 A failed call counts as a miss, so a broken server cannot score well. A reply that has no list
 under `results`, `products`, `items` or `hits`, or that is neither structured content nor JSON
@@ -188,8 +201,8 @@ choice, so the tool level only describes it. At the assistant level they count: 
 The process exits 0 on success, 1 when the run could not complete, 2 when any query errored (in
 the tool-level or the assistant-level run) and 3 when a gate was not met: `--min-hit5 <f64>` and
 `--min-mrr <f64>` compare against the "all" row, `--min-accuracy <f64>` against the
-assistant-level share of correct committed answers (it needs `--assistant`), and the failed gate
-is printed. A run whose report is incomplete exits 1. `--top-k` takes 1 to 100, `--max-turns` 1 to
+assistant-level share of correct committed answers (it needs `--assistant`), the failed gate
+is printed, and a run that meets its gates prints each threshold with the measured score. Query errors of the `no_match` kind count toward exit 2. A run whose report is incomplete exits 1. `--top-k` takes 1 to 100, `--max-turns` 1 to
 50 and `--repeat` at least 1; other values are refused before any request. The JSON report is written first, and `--out` refuses to replace an
 existing file without `--force`. The report starts with a `meta` block: crate version, git commit of
 the build (`+dirty` if the tree had changes), SHA-256 of the queries file, `top_k`, the search tool,
@@ -208,7 +221,10 @@ than `ping` (sampling, roots) are not supported.
 **Assistant-level (optional, costs tokens).** `--assistant anthropic` gives a model the store's
 tools through the Anthropic Messages API and lets it work until it answers, at most `--max-turns`
 (default 8). No `temperature` is sent unless `--temperature <0-1>` is given, because some models
-reject the parameter; the report records `null` or the value. A tool that returns only structured
+reject the parameter; the report records `null` or the value. `--max-tokens` (default 1024) caps
+each model reply and is recorded in `meta.assistant` with the temperature; both flags need
+`--assistant`. Each tool call is stored in `tools_used` with the arguments the model sent (older
+files hold bare tool names and still parse). The `tools/list` call follows `nextCursor` pages (at most 20). A tool that returns only structured
 content reaches the model as that JSON. The system prompt does not name a kind of store and asks
 the model to end its final reply with a line `ANSWER: <part id>` (or `ANSWER: none`). The answer is correct
 only when that committed id equals an expected id after normalising case and punctuation; whether
@@ -224,11 +240,12 @@ run, with `"complete": false` until the end, so a paid run that fails midway lea
 results.
 
 For a `no_match` query the only correct committed answer is `ANSWER: none`; for every other query
-`none` is wrong. Accuracy carries a 95% Wilson interval. `--trials N` runs each query N times and
+`none` is wrong. With one trial, accuracy carries a 95% Wilson interval. `--trials N` runs each query N times and
 reports the mean accuracy and pass@k for k = 1..N with the unbiased estimator (the chance that at
-least one of k runs drawn from the N is right). The Wilson interval treats the runs as
-independent, which repeated runs of the same 44 queries are not, so with several trials it is
-narrower than the truth; read pass@k and the per-query rows instead. The report records the
+least one of k runs drawn from the N is right). The runs of one query are not independent, so with
+several trials the interval is a seeded bootstrap that resamples whole queries and keeps each
+query's trials together (`n/a` under 10 queries or when every query scored the same); pass@k
+and the per-query rows remain the better read. The report records the
 `model` id the API returned in its replies next to the alias that was requested. The client also
 retries a request timeout or a failed connect, with the same backoff and limit as an HTTP 429.
 
@@ -247,29 +264,30 @@ counts and trials.
 
 Tool-level run on 2026-11-03, release build, store and CLI on the same machine (Apple M4 Max,
 64 GiB, macOS 27.2), loopback, one run of 44 queries (40 ranked, 4 `no_match`), `--top-k 10`, `--repeat 1`, built from commit
-`e0f398e` (the `git_commit` in the file's `meta` block):
+`1d1682d` (the `git_commit` in the file's `meta` block), with the gates CI uses:
 
 ```sh
 cargo build --release --workspace
 ./target/release/reference-store &
 ./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp \
-  --out results/tool-level-2026-11-03.json
+  --out results/tool-level-2026-11-03.json --min-hit5 0.92 --min-mrr 0.91
 ```
 
-Hit intervals are 95% Wilson; recall, nDCG and MRR intervals are seeded 95% bootstrap; p50 and
-p95 are milliseconds. The file is `results/tool-level-2026-11-03.json`.
+Hit intervals are 95% Wilson; recall, nDCG and MRR intervals are seeded 95% bootstrap and read
+`n/a` for a kind with fewer than 10 queries or whose scores are all equal (see "How the evals
+work"); p50 and p95 are milliseconds. The file is `results/tool-level-2026-11-03.json`.
 
 | kind | queries | hit@1 (95% CI) | hit@5 (95% CI) | recall@10 (95% CI) | nDCG@10 (95% CI) | MRR (95% CI) | p50 ms | p95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (1.00-1.00) | 0.30 (0.30-0.30) | 0.11 (0.11-0.11) | 0.72 | 0.72 |
-| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (0.70-1.00) | 0.89 (0.67-1.00) | 0.89 (0.67-1.00) | 0.54 | 0.74 |
-| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.43 | 1.62 |
-| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.83 (0.50-1.00) | 0.43 | 0.82 |
-| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (1.00-1.00) | 0.94 (0.81-1.00) | 0.92 (0.75-1.00) | 0.55 | 0.72 |
-| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.55 | 1.14 |
-| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 1.00 (1.00-1.00) | 0.66 | 1.18 |
-| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.56 | 1.14 |
-| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.56 | 1.18 |
+| adversarial | 1 | 0.00 (0.00-0.79) | 0.00 (0.00-0.79) | 1.00 (n/a) | 0.30 (n/a) | 0.11 (n/a) | 0.71 | 0.71 |
+| compatibility | 8 | 0.88 (0.53-0.98) | 0.88 (0.53-0.98) | 0.90 (n/a) | 0.89 (n/a) | 0.89 (n/a) | 0.50 | 0.69 |
+| exact_part_number | 5 | 1.00 (0.57-1.00) | 1.00 (0.57-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.64 | 0.98 |
+| filter | 6 | 0.83 (0.44-0.97) | 0.83 (0.44-0.97) | 0.83 (n/a) | 0.83 (n/a) | 0.83 (n/a) | 0.40 | 0.50 |
+| plain_description | 8 | 0.88 (0.53-0.98) | 1.00 (0.68-1.00) | 1.00 (n/a) | 0.94 (n/a) | 0.92 (n/a) | 0.49 | 0.84 |
+| synonym | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.35 | 0.42 |
+| typo | 6 | 1.00 (0.61-1.00) | 1.00 (0.61-1.00) | 1.00 (n/a) | 1.00 (n/a) | 1.00 (n/a) | 0.33 | 0.62 |
+| **all** | 40 | 0.90 (0.77-0.96) | 0.93 (0.80-0.97) | 0.96 (0.89-1.00) | 0.92 (0.84-0.99) | 0.91 (0.82-0.98) | 0.41 | 0.84 |
+| **all except filter** | 34 | 0.91 (0.77-0.97) | 0.94 (0.81-0.98) | 0.98 (0.93-1.00) | 0.94 (0.86-1.00) | 0.93 (0.84-1.00) | 0.42 | 0.91 |
 
 The four `no_match` queries returned 10 results each (the store always returns its best guesses)
 and are not in any row above.
@@ -309,7 +327,10 @@ No run ended in an API error or without a final answer. The files are
 ```
 
 A run is correct when its `ANSWER:` line commits to an expected id (`none` for a `no_match` query).
-Intervals are 95% Wilson and count every run as independent.
+Intervals are 95% Wilson and count every run as independent. These tables, and the tool-level
+table before the 2026-11-03 rerun, were produced by v0.1.0-pre code (Wilson intervals only, no
+cluster bootstrap); the report code cannot re-render a saved file, and re-running costs API
+tokens, so they are left as written.
 
 **claude-haiku-5-5**, 3 trials per query: pass@1 0.94, pass@2 0.95, pass@3 0.95. Tokens over all 132
 runs: 1,196,419 input and 76,890 output.
@@ -381,7 +402,8 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings   # includes clippy::pedantic
 cargo test --workspace
 cargo doc --no-deps --workspace                          # with RUSTDOCFLAGS="-D warnings"
-cargo deny check licenses bans sources                   # offline; see deny.toml
+cargo deny --offline check licenses bans sources          # no network; see deny.toml
+cargo deny check advisories                              # needs network (RustSec); CI runs it
 ```
 
 `Cargo.lock` is committed and holds only crate versions published before 2026-10-19, at least two
@@ -398,6 +420,22 @@ a requirement that the first five queries (exact part numbers) rank first. Anoth
 that every expected id exists in the demo catalog, and `expected_sets` rederives every expected set
 from catalog attributes. The assistant loop, the retries, the exit codes and the report metadata
 are tested against mocks and the in-process store.
+
+## Threat model
+
+The store is a demo meant to be exposed behind a proxy for a hosted assistant. It defends against:
+
+- a spoofed `X-Forwarded-For`: only the entry the trusted proxy appended is read, never the
+  client-written ones on its left;
+- oversized bodies (64 KiB), long or numerous inputs, and requests that run too long (504);
+- slow or stuck clients and floods: a cap on requests in flight (503) and a per-client rate limit;
+- cross-origin browser calls and DNS rebinding: `Host` and `Origin` are checked, case-insensitively;
+- exhaustion of the client table: it is bounded, with a shared overflow bucket.
+
+It does not provide: authentication or authorisation (every tool is public and read-only apart
+from the fake cart); rate limits shared across instances (the limiter is in memory and per
+process, so N instances allow N times the budget); or protection from a distributed or
+network-layer denial of service, which belongs to the proxy or the network in front.
 
 ## Limitations
 

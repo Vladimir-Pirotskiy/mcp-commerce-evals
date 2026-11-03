@@ -1,7 +1,7 @@
 {
   "meta": {
     "crate_version": "0.1.0",
-    "git_commit": "e0f398e3450a8329465d86db2261e64d31d0eece",
+    "git_commit": "1d1682db2c1082c7e3ae1a998f692fdeaca390f9",
     "queries_sha256": "4eea41e518223076a1695b9d5e1a060785d2277359643c0b4e941f5d5203a517",
     "top_k": 10,
     "repeat": 1,
@@ -19,7 +19,7 @@
   },
   "store_url": "http://127.0.0.1:8787/mcp",
   "queries_file": "evals/queries.json",
-  "unix_time": 1793692221,
+  "unix_time": 1793696056,
   "complete": true,
   "tool_level": {
     "overall": {
@@ -51,9 +51,9 @@
       },
       "errors": 0,
       "latency_samples": 40,
-      "latency_p50_ms": 0.5640419999999999,
-      "latency_p95_ms": 1.142875,
-      "latency_mean_ms": 0.631892725
+      "latency_p50_ms": 0.408792,
+      "latency_p95_ms": 0.837167,
+      "latency_mean_ms": 0.481148025
     },
     "overall_without_filter": {
       "n": 34,
@@ -84,9 +84,9 @@
       },
       "errors": 0,
       "latency_samples": 34,
-      "latency_p50_ms": 0.5640419999999999,
-      "latency_p95_ms": 1.1837499999999999,
-      "latency_mean_ms": 0.6462095882352942
+      "latency_p50_ms": 0.422125,
+      "latency_p95_ms": 0.905875,
+      "latency_mean_ms": 0.49968761764705893
     },
     "by_kind": {
       "adversarial": {
@@ -102,25 +102,16 @@
           "high": 0.7934567085261071
         },
         "mrr": 0.1111111111111111,
-        "mrr_ci": {
-          "low": 0.1111111111111111,
-          "high": 0.1111111111111111
-        },
+        "mrr_ci": null,
         "recall_at_10": 1.0,
-        "recall_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 0.3010299956639812,
-        "ndcg_at_10_ci": {
-          "low": 0.3010299956639812,
-          "high": 0.3010299956639812
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 1,
-        "latency_p50_ms": 0.723875,
-        "latency_p95_ms": 0.723875,
-        "latency_mean_ms": 0.723875
+        "latency_p50_ms": 0.7062080000000001,
+        "latency_p95_ms": 0.7062080000000001,
+        "latency_mean_ms": 0.7062080000000001
       },
       "compatibility": {
         "n": 8,
@@ -135,25 +126,16 @@
           "high": 0.9775830911367038
         },
         "mrr": 0.8888888888888888,
-        "mrr_ci": {
-          "low": 0.6666666666666666,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 0.9,
-        "recall_at_10_ci": {
-          "low": 0.7000000000000001,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 0.8912343764566676,
-        "ndcg_at_10_ci": {
-          "low": 0.6737031293700028,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.5379999999999999,
-        "latency_p95_ms": 0.738583,
-        "latency_mean_ms": 0.547510375
+        "latency_p50_ms": 0.504208,
+        "latency_p95_ms": 0.6922919999999999,
+        "latency_mean_ms": 0.5261405
       },
       "exact_part_number": {
         "n": 5,
@@ -168,25 +150,16 @@
           "high": 1.0
         },
         "mrr": 1.0,
-        "mrr_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 1.0,
-        "recall_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 1.0,
-        "ndcg_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 5,
-        "latency_p50_ms": 0.430917,
-        "latency_p95_ms": 1.619084,
-        "latency_mean_ms": 0.724742
+        "latency_p50_ms": 0.644208,
+        "latency_p95_ms": 0.979375,
+        "latency_mean_ms": 0.6503082
       },
       "filter": {
         "n": 6,
@@ -201,25 +174,16 @@
           "high": 0.9699474141282697
         },
         "mrr": 0.8333333333333334,
-        "mrr_ci": {
-          "low": 0.5,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 0.8333333333333334,
-        "recall_at_10_ci": {
-          "low": 0.5,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 0.8333333333333334,
-        "ndcg_at_10_ci": {
-          "low": 0.5,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.425875,
-        "latency_p95_ms": 0.8187500000000001,
-        "latency_mean_ms": 0.5507638333333333
+        "latency_p50_ms": 0.39883300000000005,
+        "latency_p95_ms": 0.5009170000000001,
+        "latency_mean_ms": 0.3760903333333334
       },
       "plain_description": {
         "n": 8,
@@ -234,25 +198,16 @@
           "high": 1.0
         },
         "mrr": 0.9166666666666666,
-        "mrr_ci": {
-          "low": 0.7499999999999999,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 1.0,
-        "recall_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 0.9375,
-        "ndcg_at_10_ci": {
-          "low": 0.8125,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 8,
-        "latency_p50_ms": 0.5534589999999999,
-        "latency_p95_ms": 0.720708,
-        "latency_mean_ms": 0.56125525
+        "latency_p50_ms": 0.49324999999999997,
+        "latency_p95_ms": 0.837167,
+        "latency_mean_ms": 0.534729375
       },
       "synonym": {
         "n": 6,
@@ -267,25 +222,16 @@
           "high": 0.9999999999999999
         },
         "mrr": 1.0,
-        "mrr_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 1.0,
-        "recall_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 1.0,
-        "ndcg_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.549708,
-        "latency_p95_ms": 1.142875,
-        "latency_mean_ms": 0.6946804999999999
+        "latency_p50_ms": 0.346667,
+        "latency_p95_ms": 0.422125,
+        "latency_mean_ms": 0.3528753333333334
       },
       "typo": {
         "n": 6,
@@ -300,25 +246,16 @@
           "high": 0.9999999999999999
         },
         "mrr": 1.0,
-        "mrr_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "mrr_ci": null,
         "recall_at_10": 1.0,
-        "recall_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "recall_at_10_ci": null,
         "ndcg_at_10": 1.0,
-        "ndcg_at_10_ci": {
-          "low": 1.0,
-          "high": 1.0
-        },
+        "ndcg_at_10_ci": null,
         "errors": 0,
         "latency_samples": 6,
-        "latency_p50_ms": 0.6604169999999999,
-        "latency_p95_ms": 1.1837499999999999,
-        "latency_mean_ms": 0.7642221666666668
+        "latency_p50_ms": 0.330417,
+        "latency_p95_ms": 0.615459,
+        "latency_mean_ms": 0.40456983333333335
       }
     },
     "no_match": {
@@ -327,6 +264,7 @@
       "empty_replies": 0,
       "mean_results_returned": 10.0
     },
+    "nondeterministic_queries": 0,
     "queries": [
       {
         "id": "q01",
@@ -349,9 +287,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.430917
+          0.39554100000000003
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q02",
@@ -374,9 +313,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.39325
+          0.905875
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q03",
@@ -390,9 +330,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.271167
+          0.326542
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q04",
@@ -415,9 +356,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          1.619084
+          0.644208
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q05",
@@ -440,9 +382,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.909292
+          0.979375
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q06",
@@ -465,9 +408,10 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.723875
+          0.7062080000000001
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q07",
@@ -490,9 +434,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.619417
+          0.837167
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q08",
@@ -516,9 +461,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.457375
+          0.632
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q09",
@@ -541,9 +487,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.366292
+          0.296417
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q10",
@@ -567,9 +514,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5534589999999999
+          0.608125
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q11",
@@ -594,9 +542,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.601958
+          0.3775
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q12",
@@ -622,9 +571,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.4922079999999999
+          0.49324999999999997
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q13",
@@ -649,9 +599,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.6786249999999999
+          0.394542
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q14",
@@ -674,9 +625,10 @@
         ],
         "rank": 3,
         "latencies_ms": [
-          0.720708
+          0.638834
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q15",
@@ -705,9 +657,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5592499999999999
+          0.425375
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q16",
@@ -732,9 +685,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.6268330000000001
+          0.6922919999999999
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q17",
@@ -758,9 +712,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5379999999999999
+          0.568375
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q18",
@@ -788,9 +743,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.472875
+          0.504208
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q19",
@@ -818,9 +774,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5640419999999999
+          0.686458
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q20",
@@ -854,9 +811,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.4815
+          0.5615410000000001
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q21",
@@ -880,9 +838,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.399
+          0.375625
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q22",
@@ -921,9 +880,10 @@
         ],
         "rank": 9,
         "latencies_ms": [
-          0.738583
+          0.39525
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q23",
@@ -948,9 +908,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.855541
+          0.615459
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q24",
@@ -977,9 +938,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.6604169999999999
+          0.49941700000000006
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q25",
@@ -1007,9 +969,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.685209
+          0.379334
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q26",
@@ -1037,9 +1000,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.54325
+          0.287
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q27",
@@ -1064,9 +1028,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          1.1837499999999999
+          0.315792
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q28",
@@ -1095,9 +1060,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.657166
+          0.330417
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q29",
@@ -1123,9 +1089,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.549708
+          0.322209
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q30",
@@ -1148,9 +1115,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.6824589999999999
+          0.27591699999999997
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q31",
@@ -1175,9 +1143,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.5354580000000001
+          0.346667
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q32",
@@ -1206,9 +1175,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          1.142875
+          0.376209
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q33",
@@ -1237,9 +1207,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.769625
+          0.422125
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q34",
@@ -1267,9 +1238,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.487958
+          0.374125
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q35",
@@ -1294,9 +1266,10 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.425875
+          0.39883300000000005
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q36",
@@ -1321,9 +1294,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.589375
+          0.5009170000000001
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q37",
@@ -1347,9 +1321,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.33475
+          0.34212499999999996
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q38",
@@ -1371,9 +1346,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.374083
+          0.408792
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q39",
@@ -1398,9 +1374,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.8187500000000001
+          0.43391700000000005
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q40",
@@ -1417,9 +1394,10 @@
         ],
         "rank": 1,
         "latencies_ms": [
-          0.7617499999999999
+          0.171958
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q41",
@@ -1440,9 +1418,10 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.5796659999999999
+          0.28408300000000003
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q42",
@@ -1463,9 +1442,10 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.824334
+          0.3015
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q43",
@@ -1486,9 +1466,10 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.8622080000000001
+          0.258834
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       },
       {
         "id": "q44",
@@ -1509,9 +1490,10 @@
         ],
         "rank": null,
         "latencies_ms": [
-          0.5772079999999999
+          0.329583
         ],
-        "error": null
+        "error": null,
+        "nondeterministic": false
       }
     ]
   },
