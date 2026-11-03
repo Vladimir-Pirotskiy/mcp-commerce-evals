@@ -1,7 +1,8 @@
 name: release
 
 # Pushing a tag such as v0.1.0 builds the Linux x86_64 binaries and publishes a GitHub release
-# for it, with notes generated from the merged pull requests.
+# for it, with the CHANGELOG section of its version as the notes. The tests run first and the
+# tarball is smoke-tested before anything is published.
 on:
   push:
     tags:
@@ -24,6 +25,8 @@ jobs:
       TARGET: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Check the tag against the workspace version
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
@@ -33,6 +36,8 @@ jobs:
           fi
       - name: Install the pinned toolchain
         run: rustup show active-toolchain || rustup toolchain install
+      - name: Test
+        run: cargo test --locked --workspace
       - name: Build the release binaries
         run: cargo build --locked --release -p mcp-commerce-evals -p reference-store
       - name: Package
@@ -42,10 +47,14 @@ jobs:
           cp target/release/mcp-commerce-evals target/release/reference-store LICENSE README.md "$name/"
           tar czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: Smoke test the tarball
+        run: sh scripts/smoke-release.sh "mcp-commerce-evals-$TAG-$TARGET.tar.gz"
+      - name: Take the release notes from the CHANGELOG
+        run: sh scripts/release-notes.sh "${TAG#v}" > release-notes.md
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           name="mcp-commerce-evals-$TAG-$TARGET"
-          gh release create "$TAG" --verify-tag --generate-notes --title "$TAG" \
+          gh release create "$TAG" --verify-tag --notes-file release-notes.md --title "$TAG" \
             "$name.tar.gz" "$name.tar.gz.sha256"

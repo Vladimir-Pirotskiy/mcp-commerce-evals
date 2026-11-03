@@ -74,14 +74,13 @@ fn every_action_is_pinned_by_commit_sha_with_a_version_comment() {
 }
 
 #[test]
-fn a_version_tag_builds_linux_binaries_and_publishes_a_release_with_generated_notes() {
+fn a_version_tag_builds_linux_binaries_and_publishes_a_release() {
     let release = workflow("release.yml");
     assert!(
         release.contains("\n  push:\n    tags:\n      - \"v*\"\n"),
         "{release}"
     );
     assert!(release.contains("gh release create"), "{release}");
-    assert!(release.contains("--generate-notes"), "{release}");
     assert!(release.contains("--release"), "{release}");
     assert!(release.contains("--locked"), "{release}");
 }
@@ -97,4 +96,70 @@ fn only_the_release_job_may_write_to_the_repository() {
     );
     assert_eq!(release.matches("contents: write").count(), 1, "{release}");
     assert!(job(&release, "release").contains("permissions:\n      contents: write\n"));
+}
+
+#[test]
+fn the_release_workflow_tests_first_takes_notes_from_the_changelog_and_smokes_the_tarball() {
+    let release = workflow("release.yml");
+    assert!(
+        release.contains("persist-credentials: false"),
+        "checkout must not leave the token in .git/config"
+    );
+    let test_at = release
+        .find("cargo test --locked --workspace")
+        .expect("the workflow must run the tests");
+    let build_at = release
+        .find("cargo build --locked --release")
+        .expect("the workflow must build");
+    assert!(test_at < build_at, "tests must run before the build");
+    assert!(release.contains("--notes-file"), "{release}");
+    assert!(!release.contains("--generate-notes"), "{release}");
+    assert!(release.contains("scripts/release-notes.sh"), "{release}");
+    let smoke_at = release
+        .find("scripts/smoke-release.sh")
+        .expect("the workflow must smoke the tarball");
+    let create_at = release
+        .find("gh release create")
+        .expect("creates the release");
+    assert!(
+        smoke_at < create_at,
+        "smoke must run before the release is created"
+    );
+}
+
+fn script(name: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("scripts")
+        .join(name)
+}
+
+#[test]
+fn release_notes_are_the_changelog_section_of_the_version() {
+    let changelog = Path::new(env!("CARGO_MANIFEST_DIR")).join("../CHANGELOG.md");
+    let run = |version: &str| {
+        std::process::Command::new("sh")
+            .arg(script("release-notes.sh"))
+            .args([version])
+            .arg(&changelog)
+            .output()
+            .expect("run sh")
+    };
+
+    let ok = run("0.1.0");
+    let notes = String::from_utf8_lossy(&ok.stdout);
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    assert!(notes.contains("First release."), "{notes}");
+    assert!(notes.contains("### Added"), "{notes}");
+    assert!(
+        !notes.contains("## ["),
+        "no other section's heading: {notes}"
+    );
+
+    let missing = run("9.9.9");
+    assert!(!missing.status.success(), "an unknown version must fail");
 }
