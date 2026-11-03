@@ -270,7 +270,7 @@ fn get_ignores_case_and_punctuation() {
 
 #[test]
 fn every_generated_part_is_found_first_by_its_own_number() {
-    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).unwrap();
+    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE).unwrap()).unwrap();
     for part in catalog.parts() {
         let query = SearchQuery {
             text: part.id.clone(),
@@ -284,7 +284,7 @@ fn every_generated_part_is_found_first_by_its_own_number() {
 
 #[test]
 fn every_generated_part_is_in_the_top_five_for_its_own_title() {
-    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).unwrap();
+    let catalog = Catalog::new(generate(DEMO_SEED, DEMO_SIZE).unwrap()).unwrap();
     for part in catalog.parts() {
         let query = SearchQuery {
             text: part.title.clone(),
@@ -301,7 +301,7 @@ fn part_numbers_that_compact_to_the_same_key_are_rejected() {
     let a = part("ALD-CH-1001", "Chain", Category::Chain, 20.0, &[]);
     let b = part("ald ch 1001", "Other chain", Category::Chain, 21.0, &[]);
 
-    let Err(error) = Catalog::new(vec![a, b]) else {
+    let Err(CatalogError::DuplicateId(error)) = Catalog::new(vec![a, b]) else {
         panic!("a duplicate key must be refused");
     };
 
@@ -313,7 +313,7 @@ fn part_numbers_that_compact_to_the_same_key_are_rejected() {
 
 #[test]
 fn the_generated_catalog_has_unique_part_numbers() {
-    assert!(Catalog::new(generate(DEMO_SEED, DEMO_SIZE)).is_ok());
+    assert!(Catalog::new(generate(DEMO_SEED, DEMO_SIZE).unwrap()).is_ok());
 }
 
 #[test]
@@ -337,4 +337,23 @@ fn matching_one_of_two_query_words_keeps_eighty_percent_of_the_score() {
         (with_missing_word - 0.8 * alone).abs() < 1e-9,
         "{with_missing_word} vs {alone}"
     );
+}
+
+#[test]
+fn a_price_that_is_not_a_sellable_whole_number_of_cents_is_refused() {
+    for bad in [10.005, 0.0, -5.0, f64::NAN, f64::INFINITY, 10_000.01, 4.0e9] {
+        let p = part("ALD-CH-1001", "Chain", Category::Chain, bad, &[]);
+        let Err(CatalogError::Price(error)) = Catalog::new(vec![p]) else {
+            panic!("price {bad} must be refused");
+        };
+        assert_eq!(error.id, "ALD-CH-1001");
+    }
+    for good in [0.01, 19.99, 10_000.0] {
+        let p = part("ALD-CH-1001", "Chain", Category::Chain, good, &[]);
+        let catalog = Catalog::new(vec![p]).unwrap();
+        assert_eq!(
+            f64::from(catalog.parts()[0].price_cents()),
+            (good * 100.0).round()
+        );
+    }
 }

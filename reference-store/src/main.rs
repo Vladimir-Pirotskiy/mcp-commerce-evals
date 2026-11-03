@@ -72,8 +72,10 @@ async fn run(args: Args) -> std::io::Result<()> {
         ..StoreConfig::default()
     };
     let catalog = Arc::new(
-        catalog::Catalog::new(catalog::generate(args.seed, args.parts))
-            .map_err(std::io::Error::other)?,
+        catalog::Catalog::new(
+            catalog::generate(args.seed, args.parts).map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?,
     );
     println!(
         "reference-store: {} parts, MCP endpoint http://{local}/mcp",

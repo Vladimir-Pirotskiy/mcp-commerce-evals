@@ -49,16 +49,33 @@ pub enum Category {
     Hub,
 }
 
+/// The dearest price a part may have, in cents ($10,000). With 20 cart lines of 99 units each
+/// the largest subtotal is under 2 billion cents, inside `u32`.
+pub const MAX_PRICE_CENTS: u32 = 1_000_000;
+
 impl Part {
     /// The price in whole cents, the exact form of [`Part::price_usd`]; use it for arithmetic.
+    /// [`Catalog::new`](crate::Catalog::new) refuses a part whose price is not a whole number
+    /// of cents in `1..=MAX_PRICE_CENTS`, so for a catalog part this is exact; out of range it
+    /// saturates.
     #[must_use]
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "prices are positive and below $10,000, so the rounded cents fit in u32"
+        reason = "the value is clamped into 0..=MAX_PRICE_CENTS first"
     )]
     pub fn price_cents(&self) -> u32 {
-        (self.price_usd * 100.0).round() as u32
+        (self.price_usd * 100.0)
+            .round()
+            .clamp(0.0, f64::from(MAX_PRICE_CENTS)) as u32
+    }
+
+    /// True when the price is a whole number of cents from one to [`MAX_PRICE_CENTS`].
+    pub(crate) fn has_valid_price(&self) -> bool {
+        let cents = self.price_usd * 100.0;
+        cents.is_finite()
+            && (1.0..=f64::from(MAX_PRICE_CENTS)).contains(&cents.round())
+            && (cents - cents.round()).abs() < 1e-6
     }
 }
 

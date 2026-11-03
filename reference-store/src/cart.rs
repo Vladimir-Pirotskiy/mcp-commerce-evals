@@ -102,8 +102,9 @@ pub fn check(catalog: &Catalog, lines: &[LineRequest]) -> Vec<LineAvailability> 
         .collect()
 }
 
-/// Dollars for a whole number of cents. Cart amounts stay far below `u32::MAX` cents (20 lines of
-/// at most 99 units of a part under $10,000); a larger value would saturate rather than wrap.
+/// Dollars for a whole number of cents. The catalog caps a price at `MAX_PRICE_CENTS`, so a cart
+/// (20 lines of at most 99 units) stays under 2 billion cents; the arithmetic still saturates
+/// rather than wraps, should a larger value ever arrive.
 fn dollars(cents: u32) -> f64 {
     f64::from(cents) / 100.0
 }
@@ -196,14 +197,16 @@ pub fn build_cart(
                 quantity: *quantity,
                 unit_price_usd: part.price_usd,
                 unit_price_cents: part.price_cents(),
-                line_total_usd: dollars(part.price_cents() * quantity),
-                line_total_cents: part.price_cents() * quantity,
+                line_total_usd: dollars(part.price_cents().saturating_mul(*quantity)),
+                line_total_cents: part.price_cents().saturating_mul(*quantity),
                 availability,
                 restock_days: part.restock_days,
             }
         })
         .collect();
-    let subtotal: u32 = cart_lines.iter().map(|l| l.line_total_cents).sum();
+    let subtotal = cart_lines
+        .iter()
+        .fold(0_u32, |sum, l| sum.saturating_add(l.line_total_cents));
     let items = cart_lines
         .iter()
         .map(|l| format!("{}:{}", l.id, l.quantity))
@@ -279,6 +282,32 @@ mod tests {
         );
         assert!(got[2].restock_days.is_some());
         assert!(got[4].unit_price_usd.is_none());
+    }
+
+    #[test]
+    fn the_dearest_possible_cart_is_exact_and_fits() {
+        let parts: Vec<Part> = (0..MAX_LINES)
+            .map(|i| {
+                let mut part = demo_catalog().parts()[i].clone();
+                part.id = format!("TST-AA-{i:04}");
+                part.price_usd = f64::from(catalog::MAX_PRICE_CENTS) / 100.0;
+                part.stock = StockStatus::InStock;
+                part.quantity_available = MAX_QUANTITY;
+                part.restock_days = None;
+                part
+            })
+            .collect();
+        let catalog = Catalog::new(parts).unwrap();
+        let lines: Vec<LineRequest> = catalog
+            .parts()
+            .iter()
+            .map(|p| line(&p.id, Some(MAX_QUANTITY)))
+            .collect();
+
+        let cart = build_cart(&catalog, &lines, "https://x.example").unwrap();
+
+        let expected = u64::from(catalog::MAX_PRICE_CENTS) * u64::from(MAX_QUANTITY) * 20;
+        assert_eq!(u64::from(cart.subtotal_cents), expected);
     }
 
     #[test]

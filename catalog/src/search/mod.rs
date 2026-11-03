@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 pub use query::{Hit, SearchQuery, SearchResults};
 
-use crate::model::Part;
+use crate::model::{MAX_PRICE_CENTS, Part};
 use crate::text::compact;
 use index::Index;
 
@@ -37,6 +37,50 @@ impl std::fmt::Display for DuplicatePartId {
 
 impl std::error::Error for DuplicatePartId {}
 
+/// A part whose price cannot be sold: not a whole number of cents between one cent and
+/// [`MAX_PRICE_CENTS`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct InvalidPrice {
+    /// The part number.
+    pub id: String,
+    /// The price as given, in dollars.
+    pub price_usd: f64,
+}
+
+impl std::fmt::Display for InvalidPrice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "part {:?} costs {} dollars; a price must be a whole number of cents from 0.01 to {}.00",
+            self.id,
+            self.price_usd,
+            MAX_PRICE_CENTS / 100
+        )
+    }
+}
+
+impl std::error::Error for InvalidPrice {}
+
+/// Why a set of parts cannot become a [`Catalog`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum CatalogError {
+    /// Two part numbers are the same once case and punctuation are ignored.
+    DuplicateId(DuplicatePartId),
+    /// A price is not a whole number of cents in range.
+    Price(InvalidPrice),
+}
+
+impl std::fmt::Display for CatalogError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CatalogError::DuplicateId(e) => e.fmt(f),
+            CatalogError::Price(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for CatalogError {}
+
 /// An indexed, searchable set of parts.
 pub struct Catalog {
     parts: Vec<Part>,
@@ -50,15 +94,23 @@ impl Catalog {
     /// # Errors
     ///
     /// Fails when two parts have numbers that are equal once case and punctuation are ignored,
-    /// because lookups by number could reach only one of them.
-    pub fn new(parts: Vec<Part>) -> Result<Self, DuplicatePartId> {
+    /// because lookups by number could reach only one of them, or when a price is not a whole
+    /// number of cents from one cent to [`MAX_PRICE_CENTS`], so that cents arithmetic on
+    /// [`Part::price_cents`] is exact and cannot overflow.
+    pub fn new(parts: Vec<Part>) -> Result<Self, CatalogError> {
         let mut by_id = HashMap::with_capacity(parts.len());
         for (i, part) in parts.iter().enumerate() {
+            if !part.has_valid_price() {
+                return Err(CatalogError::Price(InvalidPrice {
+                    id: part.id.clone(),
+                    price_usd: part.price_usd,
+                }));
+            }
             if let Some(previous) = by_id.insert(compact(&part.id), i) {
-                return Err(DuplicatePartId {
+                return Err(CatalogError::DuplicateId(DuplicatePartId {
                     first: parts[previous].id.clone(),
                     second: part.id.clone(),
-                });
+                }));
             }
         }
         let index = Index::build(&parts);
