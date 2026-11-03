@@ -61,7 +61,8 @@ reference-store --allowed-host shop.example.org --trust-forwarded-for
 `--trust-forwarded-for` makes the rate limiter key on `X-Forwarded-For`; use it only behind a proxy
 that sets that header. The client is the entry that many proxies from the right (default 1, the
 address your proxy appended; change it with `--trusted-proxy-hops`), because everything to its left
-is written by the client. An entry that is not an IP address falls back to the socket peer, and
+is written by the client. An entry that is not an IP address, or is not valid UTF-8, falls back to the socket peer; entries
+are counted on raw bytes, so a bad entry to the left of the trusted one changes nothing.
 IPv6 clients are counted per /64. Make sure your proxy appends to the header rather than passing
 the client's value through unchanged.
 

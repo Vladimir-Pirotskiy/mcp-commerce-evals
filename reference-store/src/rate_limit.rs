@@ -190,15 +190,22 @@ fn client_network(ip: IpAddr) -> IpAddr {
 }
 
 /// The address `hops` entries from the right of the `X-Forwarded-For` header(s), which a trusted
-/// proxy wrote. Entries further left are client-supplied and never read. `None` when the header
-/// is missing, short, not UTF-8 or the entry is not an IP address.
+/// proxy wrote. Entries further left are client-supplied and never read. Entries are counted on
+/// the raw bytes, so a header line that is not UTF-8 spoils only the entry it sits in: a bad
+/// client-written entry left of the trusted one changes nothing, and a bad trusted entry is
+/// unusable. `None` when the header is missing or short, or the entry is not an IP address; the
+/// caller then names the client by the socket peer.
 fn forwarded_address(headers: &HeaderMap, hops: NonZeroUsize) -> Option<IpAddr> {
-    let mut entries = Vec::new();
+    let mut entries: Vec<&[u8]> = Vec::new();
     for value in headers.get_all("x-forwarded-for") {
-        entries.extend(value.to_str().ok()?.split(','));
+        entries.extend(value.as_bytes().split(|byte| *byte == b','));
     }
     let index = entries.len().checked_sub(hops.get())?;
-    entries.get(index)?.trim().parse().ok()
+    std::str::from_utf8(entries.get(index)?)
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 fn client_key(state: &LimitState, peer: SocketAddr, headers: &HeaderMap) -> IpAddr {
@@ -439,6 +446,33 @@ mod tests {
             None
         );
         assert_eq!(forwarded_address(&HeaderMap::new(), hops(1)), None);
+    }
+
+    #[test]
+    fn bytes_that_are_not_utf8_spoil_only_the_entry_they_sit_in() {
+        let mut map = HeaderMap::new();
+        map.append(
+            "x-forwarded-for",
+            HeaderValue::from_bytes(b"\xff\xfe, 2.2.2.2").expect("header"),
+        );
+        map.append("x-forwarded-for", HeaderValue::from_static("203.0.113.9"));
+        // The client-written bad line is left of the trusted entries and changes nothing.
+        assert_eq!(forwarded_address(&map, hops(1)), Some(ip("203.0.113.9")));
+        assert_eq!(forwarded_address(&map, hops(2)), Some(ip("2.2.2.2")));
+        // The entry itself is garbage: unusable, so the caller falls back to the socket peer.
+        assert_eq!(forwarded_address(&map, hops(3)), None);
+        // Hops still count entries across the bad line, not lines.
+        let mut trusted_bad = HeaderMap::new();
+        trusted_bad.append("x-forwarded-for", HeaderValue::from_static("1.1.1.1"));
+        trusted_bad.append(
+            "x-forwarded-for",
+            HeaderValue::from_bytes(b"\xff").expect("header"),
+        );
+        assert_eq!(forwarded_address(&trusted_bad, hops(1)), None);
+        assert_eq!(
+            forwarded_address(&trusted_bad, hops(2)),
+            Some(ip("1.1.1.1"))
+        );
     }
 
     #[test]
