@@ -58,8 +58,9 @@ jobs:
           curl --fail --silent --retry 20 --retry-connrefused --retry-delay 1 \
             http://127.0.0.1:8787/health
       - name: Run the tool-level eval
-        # The floors sit at the committed values minus one query (hit@5 0.925, MRR 0.914), so a
-        # ranking regression fails the job; evals/tests/ci_floors.rs keeps them in step.
+        # Each floor sits just below the committed value (hit@5 0.925, MRR 0.914) and within one
+        # query (0.025 of 40) of it, so losing a query's rank fails the job while rounding noise
+        # does not; evals/tests/ci_floors.rs keeps them in step.
         run: |
           ./target/release/mcp-commerce-evals --url http://127.0.0.1:8787/mcp \
             --out eval-results.json --min-hit5 0.92 --min-mrr 0.91
