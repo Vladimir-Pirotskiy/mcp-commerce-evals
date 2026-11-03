@@ -82,6 +82,7 @@ fn the_queries_file_is_valid_and_every_expected_part_exists() {
         "typo",
         "synonym",
         "filter",
+        "adversarial",
     ] {
         assert!(kinds.contains(kind), "no {kind} queries");
     }
@@ -127,7 +128,7 @@ async fn tool_level_eval_against_the_in_process_store() {
         let result = report.queries.iter().find(|q| q.id == id).unwrap();
         assert_eq!(result.rank, Some(1), "{id} {}", result.text);
     }
-    assert_eq!(report.by_kind.len(), 6);
+    assert_eq!(report.by_kind.len(), 7);
 }
 
 #[tokio::test]
