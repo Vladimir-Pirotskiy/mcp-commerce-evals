@@ -12,6 +12,7 @@ mod rate_limit;
 mod tools;
 
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,10 +26,9 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use serde_json::json;
 use tokio::net::TcpListener;
 
-pub use rate_limit::RateLimiter;
 pub use tools::ReferenceStore;
 
-use rate_limit::LimitState;
+use rate_limit::{LimitState, RateLimiter};
 
 /// How the store is deployed.
 #[derive(Debug, Clone)]
@@ -42,6 +42,10 @@ pub struct StoreConfig {
     pub requests_per_minute: u32,
     /// Name clients by `X-Forwarded-For` instead of the socket address (behind a proxy only).
     pub trust_forwarded_for: bool,
+    /// With `trust_forwarded_for`: how many proxies you run in front of the store. The client is
+    /// the entry that many places from the right of `X-Forwarded-For`; the client controls
+    /// everything to its left.
+    pub trusted_proxy_hops: NonZeroUsize,
 }
 
 impl Default for StoreConfig {
@@ -51,6 +55,7 @@ impl Default for StoreConfig {
             allowed_hosts: Vec::new(),
             requests_per_minute: 120,
             trust_forwarded_for: false,
+            trusted_proxy_hops: NonZeroUsize::MIN,
         }
     }
 }
@@ -86,7 +91,9 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
             config.requests_per_minute,
             Duration::from_secs(60),
         )),
-        trust_forwarded_for: config.trust_forwarded_for,
+        trusted_proxy_hops: config
+            .trust_forwarded_for
+            .then_some(config.trusted_proxy_hops),
     };
     let mcp = Router::new()
         .nest_service("/mcp", service)

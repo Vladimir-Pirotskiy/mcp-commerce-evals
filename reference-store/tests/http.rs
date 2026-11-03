@@ -46,6 +46,18 @@ impl Running {
             .expect("request reaches the store")
     }
 
+    async fn rpc_with_header(&self, name: &str, value: &str) -> StatusCode {
+        self.client
+            .post(format!("{}/mcp", self.base))
+            .header("accept", "application/json, text/event-stream")
+            .header(name, value)
+            .json(&json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }))
+            .send()
+            .await
+            .expect("request reaches the store")
+            .status()
+    }
+
     async fn call(&self, tool: &str, arguments: Value) -> Value {
         let response = self
             .rpc(
@@ -424,4 +436,78 @@ async fn a_request_body_over_64_kib_is_refused() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+fn behind_a_proxy(requests_per_minute: u32) -> StoreConfig {
+    StoreConfig {
+        requests_per_minute,
+        trust_forwarded_for: true,
+        ..StoreConfig::default()
+    }
+}
+
+#[tokio::test]
+async fn rotating_the_leftmost_forwarded_address_does_not_escape_the_limit() {
+    let store = start(behind_a_proxy(2)).await;
+    let mut statuses = Vec::new();
+    for client_chosen in 1..=4 {
+        let header = format!("198.51.100.{client_chosen}, 203.0.113.9");
+        statuses.push(store.rpc_with_header("x-forwarded-for", &header).await);
+    }
+    assert_eq!(
+        statuses,
+        [
+            StatusCode::OK,
+            StatusCode::OK,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::TOO_MANY_REQUESTS
+        ]
+    );
+}
+
+#[tokio::test]
+async fn clients_are_told_apart_by_the_address_the_proxy_appended() {
+    let store = start(behind_a_proxy(1)).await;
+    for proxy_seen in ["203.0.113.1", "203.0.113.2"] {
+        let header = format!("198.51.100.7, {proxy_seen}");
+        assert_eq!(
+            store.rpc_with_header("x-forwarded-for", &header).await,
+            StatusCode::OK,
+            "{proxy_seen}"
+        );
+    }
+    let again = store
+        .rpc_with_header("x-forwarded-for", "198.51.100.7, 203.0.113.1")
+        .await;
+    assert_eq!(again, StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn an_unparseable_forwarded_address_falls_back_to_the_socket_peer() {
+    let store = start(behind_a_proxy(1)).await;
+    let first = store.rpc_with_header("x-forwarded-for", "not-an-ip").await;
+    let second = store.rpc_with_header("x-forwarded-for", "also-bad").await;
+    assert_eq!(
+        (first, second),
+        (StatusCode::OK, StatusCode::TOO_MANY_REQUESTS)
+    );
+}
+
+#[tokio::test]
+async fn forwarded_addresses_are_ignored_unless_trusted() {
+    let store = start(StoreConfig {
+        requests_per_minute: 1,
+        ..StoreConfig::default()
+    })
+    .await;
+    let first = store
+        .rpc_with_header("x-forwarded-for", "198.51.100.1")
+        .await;
+    let second = store
+        .rpc_with_header("x-forwarded-for", "198.51.100.2")
+        .await;
+    assert_eq!(
+        (first, second),
+        (StatusCode::OK, StatusCode::TOO_MANY_REQUESTS)
+    );
 }
