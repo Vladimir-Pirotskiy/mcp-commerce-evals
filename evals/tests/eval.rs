@@ -3,6 +3,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -55,6 +56,7 @@ fn options() -> Options {
     Options {
         search_tool: "search_products".to_owned(),
         top_k: 10,
+        repeat: 1,
     }
 }
 
@@ -107,7 +109,19 @@ async fn tool_level_eval_against_the_in_process_store() {
         "MRR fell to {}",
         report.overall.mrr
     );
-    assert!(report.overall.hit_at_1 <= 1.0 && report.overall.latency_p95_ms > 0.0);
+    // The shipped seed is deterministic, so the counts are exact: 36 and 37 of 40.
+    assert_eq!(report.overall.hit_at_1, 0.9);
+    assert_eq!(report.overall.hit_at_5, 0.925);
+    let ci = report.overall.hit_at_5_ci;
+    assert!(
+        ci.low < 0.925 && 0.925 < ci.high && ci.high <= 1.0,
+        "{ci:?}"
+    );
+    assert!(report.overall.recall_at_10 > 0.0 && report.overall.ndcg_at_10 > 0.0);
+    assert_eq!(report.overall_without_filter.n, 34);
+    assert_eq!(report.overall.latency_samples, 40);
+    let overall = &report.overall;
+    assert!(0.0 < overall.latency_p50_ms && overall.latency_p50_ms <= overall.latency_p95_ms);
     // Spelled-out part numbers are the easy case and must always rank first.
     for id in ["q01", "q02", "q03", "q04", "q05"] {
         let result = report.queries.iter().find(|q| q.id == id).unwrap();
@@ -124,6 +138,7 @@ async fn a_missing_search_tool_is_reported_per_query_not_as_a_crash() {
     let wrong = Options {
         search_tool: "no_such_tool".to_owned(),
         top_k: 10,
+        repeat: 1,
     };
 
     let report = tool_level::run(&mut mcp, &queries[..2], &wrong)
@@ -456,34 +471,47 @@ fn an_empty_api_key_is_rejected_before_any_request() {
     assert!(ApiKey::new(String::new()).is_err());
 }
 
-/// A stand-in MCP server whose `tools/call` always returns `call_result`.
-async fn spawn_mock_mcp(call_result: Value) -> Server {
-    async fn rpc(
-        State(result): State<Arc<Value>>,
-        Json(body): Json<Value>,
-    ) -> (StatusCode, Json<Value>) {
-        let reply = match body["method"].as_str() {
-            Some("initialize") => json!({
-                "protocolVersion": "2025-03-26",
-                "serverInfo": { "name": "mock-store", "version": "9.9" }
-            }),
-            Some("tools/call") => (*result).clone(),
-            _ => return (StatusCode::ACCEPTED, Json(Value::Null)),
-        };
-        (
-            StatusCode::OK,
-            Json(json!({ "jsonrpc": "2.0", "id": body["id"], "result": reply })),
-        )
-    }
+/// A stand-in MCP server whose `tools/call` always returns `call_result` and counts its calls.
+struct MockMcp {
+    call_result: Value,
+    calls: AtomicUsize,
+}
+
+async fn mock_rpc(
+    State(mock): State<Arc<MockMcp>>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let reply = match body["method"].as_str() {
+        Some("initialize") => json!({
+            "protocolVersion": "2025-03-26",
+            "serverInfo": { "name": "mock-store", "version": "9.9" }
+        }),
+        Some("tools/call") => {
+            mock.calls.fetch_add(1, Ordering::SeqCst);
+            mock.call_result.clone()
+        }
+        _ => return (StatusCode::ACCEPTED, Json(Value::Null)),
+    };
+    (
+        StatusCode::OK,
+        Json(json!({ "jsonrpc": "2.0", "id": body["id"], "result": reply })),
+    )
+}
+
+async fn spawn_mock_mcp(call_result: Value) -> (Server, Arc<MockMcp>) {
+    let mock = Arc::new(MockMcp {
+        call_result,
+        calls: AtomicUsize::new(0),
+    });
     let router = Router::new()
-        .route("/mcp", post(rpc))
-        .with_state(Arc::new(call_result));
+        .route("/mcp", post(mock_rpc))
+        .with_state(mock.clone());
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind a port");
     let base = format!("http://{}", listener.local_addr().expect("local address"));
     let task = tokio::spawn(async move {
         let _ = axum::serve(listener, router).await;
     });
-    Server { base, task }
+    (Server { base, task }, mock)
 }
 
 fn structured(body: &Value) -> Value {
@@ -496,7 +524,7 @@ async fn a_store_that_ignores_limit_is_scored_on_the_top_k_only() {
         .map(|i| json!({ "id": format!("P-{i}") }))
         .chain([json!({ "id": "WANTED" })])
         .collect();
-    let server = spawn_mock_mcp(structured(&json!({ "results": hits }))).await;
+    let (server, _) = spawn_mock_mcp(structured(&json!({ "results": hits }))).await;
     let mut mcp = connect(&server.base).await;
     let queries = [query("a", "thing", "WANTED")];
     let options = Options {
@@ -513,7 +541,7 @@ async fn a_store_that_ignores_limit_is_scored_on_the_top_k_only() {
 
 #[tokio::test]
 async fn an_unrecognised_result_shape_counts_as_an_error() {
-    let server = spawn_mock_mcp(structured(&json!({ "matches": [{ "id": "WANTED" }] }))).await;
+    let (server, _) = spawn_mock_mcp(structured(&json!({ "matches": [{ "id": "WANTED" }] }))).await;
     let mut mcp = connect(&server.base).await;
     let queries = [query("a", "thing", "WANTED")];
 
@@ -527,7 +555,7 @@ async fn an_unrecognised_result_shape_counts_as_an_error() {
 
 #[tokio::test]
 async fn the_handshake_keeps_the_server_info_and_negotiated_protocol() {
-    let server = spawn_mock_mcp(json!({})).await;
+    let (server, _) = spawn_mock_mcp(json!({})).await;
     let mcp = connect(&server.base).await;
 
     let handshake = mcp.handshake();
@@ -621,4 +649,22 @@ async fn cli_refuses_to_overwrite_a_report_unless_forced() {
     let (code, stderr) = run_cli(&store.base, &["--force"], &out).await;
     assert_eq!(code, 0, "{stderr}");
     assert_ne!(std::fs::read_to_string(&out).expect("read"), "keep me");
+}
+
+#[tokio::test]
+async fn repeat_times_each_query_that_many_times_after_one_untimed_warm_up() {
+    let body = structured(&json!({ "results": [{ "id": "WANTED" }] }));
+    let (server, mock) = spawn_mock_mcp(body).await;
+    let mut mcp = connect(&server.base).await;
+    let queries = [query("a", "one", "WANTED"), query("b", "two", "WANTED")];
+    let options = Options {
+        repeat: 3,
+        ..options()
+    };
+
+    let report = tool_level::run(&mut mcp, &queries, &options).await.unwrap();
+
+    assert_eq!(mock.calls.load(Ordering::SeqCst), 1 + 2 * 3);
+    assert_eq!(report.overall.latency_samples, 6);
+    assert_eq!(report.queries[0].latencies_ms.len(), 3);
 }

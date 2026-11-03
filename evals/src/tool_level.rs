@@ -16,6 +16,9 @@ const LIST_KEYS: [&str; 4] = ["results", "products", "items", "hits"];
 /// Keys that hold a product's identifier, in order.
 const ID_KEYS: [&str; 4] = ["id", "sku", "part_number", "product_id"];
 
+/// The query kind whose expected sets are defined by the structured arguments.
+pub const FILTER_KIND: &str = "filter";
+
 /// How the search tool is called.
 #[derive(Debug, Clone)]
 pub struct Options {
@@ -23,6 +26,9 @@ pub struct Options {
     pub search_tool: String,
     /// How many results to ask for (sent as `limit` unless the query sets its own).
     pub top_k: usize,
+    /// How many timed calls to make per query; one extra, untimed call warms the connection up
+    /// before the first query.
+    pub repeat: usize,
 }
 
 /// The outcome of one query.
@@ -41,8 +47,8 @@ pub struct QueryResult {
     pub returned: Vec<Option<String>>,
     /// 1-based rank of the best expected id among the results, if any.
     pub rank: Option<usize>,
-    /// Round-trip time of the search call in milliseconds.
-    pub latency_ms: f64,
+    /// Round-trip time in milliseconds of each timed call; empty when the query errored.
+    pub latencies_ms: Vec<f64>,
     /// Why the call failed, when it did.
     pub error: Option<String>,
 }
@@ -52,6 +58,9 @@ pub struct QueryResult {
 pub struct ToolLevelReport {
     /// Scores over every query.
     pub overall: Summary,
+    /// Scores over every query except `filter` ones, which pass structured arguments that
+    /// define their own expected sets and so test filtering rather than ranking.
+    pub overall_without_filter: Summary,
     /// Scores per query kind.
     pub by_kind: BTreeMap<String, Summary>,
     /// One entry per query.
@@ -101,20 +110,48 @@ fn arguments(query: &Query, top_k: usize) -> Value {
     Value::Object(args)
 }
 
-async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> QueryResult {
+/// One timed search call, with its reply read as a ranking.
+async fn search_ids(
+    mcp: &mut McpClient,
+    query: &Query,
+    options: &Options,
+) -> (Result<Vec<Option<String>>>, f64) {
     let started = Instant::now();
     let outcome = mcp
         .call_tool(&options.search_tool, arguments(query, options.top_k))
         .await;
     let latency_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let (returned, error) = match outcome {
-        Ok(output) if output.is_error => (Vec::new(), Some(output.text)),
-        Ok(output) => match result_ids(&output, options.top_k) {
-            Ok(ids) => (ids, None),
-            Err(e) => (Vec::new(), Some(e.to_string())),
-        },
-        Err(e) => (Vec::new(), Some(e.to_string())),
+    let ids = match outcome {
+        Ok(output) if output.is_error => Err(Error::Protocol(output.text)),
+        Ok(output) => result_ids(&output, options.top_k),
+        Err(e) => Err(e),
     };
+    (ids, latency_ms)
+}
+
+/// Calls the search tool `options.repeat` times for one query. The first reply is ranked; any
+/// failed call makes the whole query an error, so a flaky store cannot score well.
+async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> QueryResult {
+    let mut returned = Vec::new();
+    let mut latencies_ms = Vec::with_capacity(options.repeat);
+    let mut error = None;
+    for call in 0..options.repeat.max(1) {
+        let (outcome, latency_ms) = search_ids(mcp, query, options).await;
+        match outcome {
+            Ok(ids) => {
+                latencies_ms.push(latency_ms);
+                if call == 0 {
+                    returned = ids;
+                }
+            }
+            Err(e) => {
+                error = Some(e.to_string());
+                returned.clear();
+                latencies_ms.clear();
+                break;
+            }
+        }
+    }
     QueryResult {
         id: query.id.clone(),
         kind: query.kind.clone(),
@@ -122,17 +159,22 @@ async fn run_one(mcp: &mut McpClient, query: &Query, options: &Options) -> Query
         expected: query.expected.clone(),
         rank: rank_of(&returned, &query.expected),
         returned,
-        latency_ms,
+        latencies_ms,
         error,
     }
 }
 
-/// Runs every query once, in file order.
+/// Runs every query in file order, after one untimed warm-up call.
 pub async fn run(
     mcp: &mut McpClient,
     queries: &[Query],
     options: &Options,
 ) -> Result<ToolLevelReport> {
+    if let Some(first) = queries.first() {
+        // The result is deliberately dropped: this call only opens the connection and warms
+        // the store's caches, so the first measured query is not penalised.
+        let _ = search_ids(mcp, first, options).await;
+    }
     let mut results = Vec::with_capacity(queries.len());
     for query in queries {
         results.push(run_one(mcp, query, options).await);
@@ -144,8 +186,14 @@ pub async fn run(
             .or_default()
             .push(result.clone());
     }
+    let without_filter: Vec<QueryResult> = results
+        .iter()
+        .filter(|r| r.kind != FILTER_KIND)
+        .cloned()
+        .collect();
     Ok(ToolLevelReport {
         overall: summarize(&results),
+        overall_without_filter: summarize(&without_filter),
         by_kind: kinds
             .iter()
             .map(|(kind, rs)| (kind.clone(), summarize(rs)))

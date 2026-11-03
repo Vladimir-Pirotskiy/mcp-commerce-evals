@@ -57,6 +57,9 @@ struct Args {
     /// Replace the report file if it already exists.
     #[arg(long)]
     force: bool,
+    /// Timed search calls per query, for latency; one untimed warm-up call precedes them.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u64).range(1..))]
+    repeat: u64,
     /// Seconds before an HTTP request to the store or the model API gives up.
     #[arg(long, default_value_t = 60)]
     timeout_secs: u64,
@@ -98,6 +101,7 @@ async fn run(args: Args) -> Result<u8> {
     let options = tool_level::Options {
         search_tool: args.search_tool,
         top_k: args.top_k,
+        repeat: usize::try_from(args.repeat).unwrap_or(usize::MAX),
     };
     let tool_level = tool_level::run(&mut mcp, &queries, &options).await?;
     println!("Tool-level ({} queries, {})\n", queries.len(), args.url);
