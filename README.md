@@ -57,7 +57,15 @@ reference-store --allowed-host shop.example.org --trust-forwarded-for
 ```
 
 `--trust-forwarded-for` makes the rate limiter key on `X-Forwarded-For`; use it only behind a proxy
-that sets that header, otherwise a client can pick its own identity.
+that sets that header. The client is the entry that many proxies from the right (default 1, the
+address your proxy appended; change it with `--trusted-proxy-hops`), because everything to its left
+is written by the client. An entry that is not an IP address falls back to the socket peer, and
+IPv6 clients are counted per /64. Make sure your proxy appends to the header rather than passing
+the client's value through unchanged.
+
+The same host list guards the `Origin` header, as the MCP transport spec requires: a browser
+request whose `Origin` is not a page on a listed host (or on loopback) gets 403, while requests
+without an `Origin`, which is every non-browser client, are served.
 
 - Claude: Settings, Connectors, Add custom connector, paste `https://shop.example.org/mcp`.
 - ChatGPT: enable Developer mode, create an app, paste the same URL. ChatGPT accepts remote HTTPS
@@ -84,8 +92,14 @@ The descriptions are written for the assistant that reads them: when to call the
 result does not contain, and what to do next. Errors come back as tool errors (`isError: true`)
 with a message that says how to recover, for example "Copy ids from search_products results".
 
-Limits: 120 requests per client per minute on `/mcp` (429 with `Retry-After`), `/health` is not
-limited, queries over 200 characters are refused, carts take at most 20 lines.
+Limits: 120 requests per client per minute on `/mcp` (429 with `Retry-After`; change it with
+`--requests-per-minute`, which must be at least 1), at most 10,000 clients tracked (more share one
+budget until a window expires), `/health` is not limited. The rate limit runs before the `Host` and
+`Origin` checks, so a request refused for either still counts against its client. Inputs: a query
+is at most 200 characters and 20 words, `limit` is 1 to 25 and anything else is refused, `brand`,
+each `fits` entry and every part id are at most 100 characters, `fits` takes at most 10 non-empty
+entries, a request body is at most 64 KiB, and carts take at most 20 lines. A part sent on several
+cart lines counts once with the lines added up: the total must fit the shelf and 99 units.
 
 ## How the evals work
 
