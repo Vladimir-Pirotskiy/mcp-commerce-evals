@@ -1,5 +1,5 @@
 //! Retrieval metrics: rank of the first right answer, hit@k with Wilson intervals, MRR,
-//! recall@k, nDCG@k and latency percentiles.
+//! capped recall@k, nDCG@k and latency percentiles.
 
 use std::borrow::Borrow;
 use std::collections::HashSet;
@@ -96,7 +96,8 @@ pub struct Summary {
     pub hit_at_5_ci: Interval,
     /// Mean reciprocal rank (0 for a query with no right answer in the results).
     pub mrr: f64,
-    /// Mean over queries of the share of a query's expected ids found in the first ten results.
+    /// Mean over queries of capped recall@10: expected ids found in the first ten results over
+    /// `min(|expected|, 10)`.
     pub recall_at_10: f64,
     /// Mean nDCG over the first ten results, with binary relevance.
     pub ndcg_at_10: f64,
@@ -136,7 +137,10 @@ fn wanted_set(expected: &[String]) -> HashSet<String> {
     expected.iter().map(|id| normalize(id)).collect()
 }
 
-/// Share of the expected ids that appear in the first `k` returned ids.
+/// Capped recall@k: the expected ids found in the first `k` returned ids, divided by
+/// `min(|expected|, k)`. Plain recall divides by `|expected|`, which makes 1.0 unreachable for a
+/// query with more than `k` right answers; the cap makes it mean "the top `k` is full of right
+/// answers", the same ceiling nDCG@k uses.
 #[must_use]
 pub fn recall_at(returned: &[Option<String>], expected: &[String], k: usize) -> f64 {
     let wanted = wanted_set(expected);
@@ -147,7 +151,7 @@ pub fn recall_at(returned: &[Option<String>], expected: &[String], k: usize) -> 
         .map(|id| normalize(id))
         .filter(|id| wanted.contains(id))
         .collect();
-    to_f64(found.len()) / to_f64(wanted.len().max(1))
+    to_f64(found.len()) / to_f64(wanted.len().min(k).max(1))
 }
 
 /// nDCG over the first `k` returned ids with binary relevance: each expected id counts once, at
@@ -322,9 +326,18 @@ mod tests {
     fn recall_is_the_share_of_expected_ids_found_in_the_top_k() {
         let returned = ids(&["A", "x", "B", "y", "C"]);
         let expected = wanted(&["a", "b", "c", "d"]);
-        assert_eq!(recall_at(&returned, &expected, 3), 0.5);
+        assert_eq!(recall_at(&returned, &expected, 3), 2.0 / 3.0);
         assert_eq!(recall_at(&returned, &expected, 10), 0.75);
         assert_eq!(recall_at(&[], &expected, 10), 0.0);
+    }
+
+    #[test]
+    fn recall_is_capped_by_k_so_a_long_expected_list_can_still_reach_one() {
+        let expected: Vec<String> = (0..17).map(|i| format!("P-{i}")).collect();
+        let returned: Vec<Option<String>> = (0..10).map(|i| Some(format!("p{i}"))).collect();
+        assert_eq!(recall_at(&returned, &expected, 10), 1.0);
+        assert_eq!(recall_at(&returned[..5], &expected, 10), 0.5);
+        assert_eq!(recall_at(&returned, &expected, 5), 1.0);
     }
 
     #[test]

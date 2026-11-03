@@ -3,3 +3,4 @@
 .DS_Store
 .claude/
 /eval-results.json
+target-r2/
