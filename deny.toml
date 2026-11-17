@@ -5,6 +5,12 @@ all-features = true
 # CI fetches the default RustSec database (`cargo deny check advisories`). Offline, run only
 # `cargo deny --offline check licenses bans sources`: those three need no database.
 yanked = "warn"
+ignore = [
+  # chrono is flagged as unmaintained, with no patched version. It is not a direct dependency: rmcp
+  # switches on the chrono support of schemars unconditionally, so it cannot be dropped from here.
+  # Remove this entry when rmcp stops pulling it in.
+  { id = "RUSTSEC-2026-0543", reason = "transitive through rmcp and schemars; no patched version exists" },
+]
 
 [licenses]
 allow = [
