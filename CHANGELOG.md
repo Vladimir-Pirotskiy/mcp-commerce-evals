@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- rmcp 3.5.1 to 3.10.0, which clears three RustSec advisories against it: RUSTSEC-2026-0457 (the
+  OAuth client's SSRF filter checked host strings, not resolved addresses), RUSTSEC-2026-0461
+  (unbounded tool schema cache in the Streamable HTTP server transport, the one the reference
+  store uses) and RUSTSEC-2026-0462 (unbounded response buffering in Streamable HTTP clients).
+- The advisory check now ignores RUSTSEC-2026-0543 (chrono is unmaintained): chrono comes in
+  through rmcp and schemars, and no patched version exists.
+
 ## [0.1.1] - 2026-11-03
 
 ### Fixed
