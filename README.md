@@ -1,6 +1,7 @@
 # mcp-commerce-evals
 
 [![ci](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/mcp-commerce-evals.svg)](https://crates.io/crates/mcp-commerce-evals)
 
 Evals for AI shopping assistants over MCP, with a reference store to run them against.
 
@@ -49,6 +50,13 @@ cargo run --release -p mcp-commerce-evals -- --url http://127.0.0.1:8787/mcp
 It prints a Markdown table and writes `eval-results.json` (change it with `--out`). The 44 queries
 are compiled into the binary, so the same command works from any directory, with a downloaded
 release binary too; `--queries <path>` uses a file of your own.
+
+To evaluate a store of your own without cloning the repo, install the eval CLI from crates.io:
+
+```sh
+cargo install mcp-commerce-evals
+mcp-commerce-evals --url https://your-store.example/mcp
+```
 
 ## Connecting a hosted assistant
 
