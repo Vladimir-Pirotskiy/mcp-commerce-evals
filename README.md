@@ -2,6 +2,7 @@
 
 [![ci](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml/badge.svg)](https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/mcp-commerce-evals.svg)](https://crates.io/crates/mcp-commerce-evals)
+[![mcp-commerce-evals MCP server on Glama](https://glama.ai/mcp/servers/Vladimir-Pirotskiy/mcp-commerce-evals/badges/score.svg)](https://glama.ai/mcp/servers/Vladimir-Pirotskiy/mcp-commerce-evals)
 
 Evals for AI shopping assistants over MCP, with a reference store to run them against.
 
