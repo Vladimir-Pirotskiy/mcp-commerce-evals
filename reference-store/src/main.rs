@@ -6,13 +6,31 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use clap::Parser;
-use reference_store::{AllowedHost, ConnectionLimits, StoreConfig, app, serve_with_limits};
+use reference_store::{
+    AllowedHost, ConnectionLimits, StoreConfig, app, serve_stdio, serve_with_limits,
+};
 use tokio::net::TcpListener;
 
-/// Serve the demo bicycle-parts catalog to AI assistants over MCP (Streamable HTTP).
+/// Serve the demo bicycle-parts catalog to AI assistants over MCP (Streamable HTTP or stdio).
 #[derive(Parser)]
 #[command(version, about)]
 struct Args {
+    /// Serve one client over stdin and stdout instead of HTTP, for clients that launch the
+    /// server themselves. The HTTP options do not apply.
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "bind",
+            "allowed_hosts",
+            "requests_per_minute",
+            "trust_forwarded_for",
+            "max_in_flight",
+            "request_timeout_secs",
+            "header_read_timeout_secs",
+            "max_connections",
+        ]
+    )]
+    stdio: bool,
     /// Address to listen on.
     #[arg(long, default_value = "127.0.0.1:8787")]
     bind: SocketAddr,
@@ -66,6 +84,20 @@ async fn main() -> ExitCode {
 }
 
 async fn run(args: Args) -> std::io::Result<()> {
+    let catalog = Arc::new(
+        catalog::Catalog::new(
+            catalog::generate(args.seed, args.parts).map_err(std::io::Error::other)?,
+        )
+        .map_err(std::io::Error::other)?,
+    );
+    if args.stdio {
+        // stdout carries the MCP messages, so the banner goes to stderr.
+        eprintln!(
+            "reference-store: {} parts, MCP over stdio",
+            catalog.parts().len()
+        );
+        return serve_stdio(catalog, &args.checkout_url).await;
+    }
     let listener = TcpListener::bind(args.bind).await?;
     let local = listener.local_addr()?;
     let config = StoreConfig {
@@ -78,12 +110,6 @@ async fn run(args: Args) -> std::io::Result<()> {
         request_timeout: std::time::Duration::from_secs(args.request_timeout_secs),
         ..StoreConfig::default()
     };
-    let catalog = Arc::new(
-        catalog::Catalog::new(
-            catalog::generate(args.seed, args.parts).map_err(std::io::Error::other)?,
-        )
-        .map_err(std::io::Error::other)?,
-    );
     println!(
         "reference-store: {} parts, MCP endpoint http://{local}/mcp",
         catalog.parts().len()
@@ -158,6 +184,21 @@ mod tests {
         let ok =
             Args::try_parse_from(["reference-store", "--allowed-host", "shop.example.org:8443"]);
         assert!(ok.is_ok());
+    }
+
+    #[test]
+    fn stdio_refuses_the_http_options() {
+        for http in [
+            ["--bind", "127.0.0.1:9000"],
+            ["--allowed-host", "shop.example.org"],
+            ["--max-connections", "8"],
+        ] {
+            let refused = Args::try_parse_from(["reference-store", "--stdio", http[0], http[1]]);
+            assert!(refused.is_err(), "{http:?}");
+        }
+        let catalog_options =
+            Args::try_parse_from(["reference-store", "--stdio", "--seed", "7", "--parts", "50"]);
+        assert!(catalog_options.is_ok());
     }
 
     #[test]

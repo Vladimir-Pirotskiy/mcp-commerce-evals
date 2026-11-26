@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `reference-store --stdio` serves one client over stdin and stdout, for clients that start their
+  servers as a child process. The HTTP options are refused in this mode; the store exits when
+  stdin closes. An integration test drives the binary over a real pipe.
+- `glama.json` names the maintainer of the listing on Glama.
+
 ### Security
 
 - rmcp 3.5.1 to 3.10.0, which clears three RustSec advisories against it: RUSTSEC-2026-0457 (the
