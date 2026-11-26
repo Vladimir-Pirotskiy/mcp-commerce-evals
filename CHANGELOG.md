@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- url 2.5.8 to 2.5.9 (with form_urlencoded 1.2.3) for RUSTSEC-2026-0592, a stack overflow in
+  `Url::origin()` on nested `blob:` URLs. Only the eval CLI's HTTP client (reqwest) depends on
+  url; the reference store does not.
 - rmcp 3.5.1 to 3.10.0, which clears three RustSec advisories against it: RUSTSEC-2026-0457 (the
   OAuth client's SSRF filter checked host strings, not resolved addresses), RUSTSEC-2026-0461
   (unbounded tool schema cache in the Streamable HTTP server transport, the one the reference
