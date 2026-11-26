@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage = "https://github.com/Vladimir-Pirotskiy/mcp-commerce-evals"
+readme = "../README.md"
+keywords = ["mcp", "evals", "search", "ecommerce", "llm"]
+categories = ["command-line-utilities", "development-tools::testing"]
 
 [dependencies]
 clap = { workspace = true }
