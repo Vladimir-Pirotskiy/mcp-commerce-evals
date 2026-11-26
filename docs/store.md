@@ -3,6 +3,19 @@
 Details of `reference-store` that the README only summarises: the tools, the limits it enforces and
 how to expose it to a hosted assistant. The threat model is in the README.
 
+## Running over stdio
+
+`reference-store --stdio` serves one client over stdin and stdout, for clients that start their
+servers as a child process (a desktop assistant's config file, `claude mcp add` without
+`--transport http`, a container behind `mcp-proxy`). Stdout carries only MCP messages, the banner
+goes to stderr, and the store exits when the client closes stdin. The tools and their answers are
+the same as over HTTP.
+
+`--seed`, `--parts` and `--checkout-url` still apply. The HTTP options (`--bind`, `--allowed-host`,
+`--trust-forwarded-for`, the rate limit, the caps and the timeouts) are refused with `--stdio`:
+they guard a network listener, and over stdio the only client is the process that started the
+store.
+
 ## Connecting a hosted assistant
 
 Hosted assistants call your server from their cloud, so `127.0.0.1` is not reachable and the URL

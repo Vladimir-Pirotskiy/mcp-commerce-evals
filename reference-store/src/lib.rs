@@ -1,8 +1,9 @@
 //! A reference MCP store: four shopping tools over a seeded catalog of fictional bicycle
-//! parts, served over stateless Streamable HTTP with JSON responses.
+//! parts, served over stateless Streamable HTTP with JSON responses, or over stdio to the one
+//! client that launched the process.
 //!
-//! [`app`] builds the axum router and [`serve`] runs it; the `reference-store` binary is a thin
-//! wrapper with command-line options.
+//! [`app`] builds the axum router and [`serve`] runs it; [`serve_stdio`] serves stdin and stdout.
+//! The `reference-store` binary is a thin wrapper with command-line options.
 
 mod api;
 mod cart;
@@ -27,6 +28,7 @@ use hyper::server::conn::http1;
 use hyper_util::rt::{TokioIo, TokioTimer};
 use hyper_util::server::graceful::GracefulShutdown;
 use hyper_util::service::TowerToHyperService;
+use rmcp::ServiceExt;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::json;
@@ -148,6 +150,25 @@ pub fn app(catalog: Arc<Catalog>, config: &StoreConfig) -> Router {
     Router::new()
         .route("/health", get(|| async { Json(json!({ "status": "ok" })) }))
         .merge(mcp)
+}
+
+/// Serves the four tools to one client over stdin and stdout until the client closes stdin.
+///
+/// Nothing but MCP messages is written to stdout. The HTTP layer's guards (the `Host` and
+/// `Origin` checks, the rate limit, the in-flight cap and the request deadline) do not apply:
+/// the only client is the process that launched the store.
+///
+/// # Errors
+///
+/// Fails when the MCP handshake fails or the service task stops abnormally.
+pub async fn serve_stdio(catalog: Arc<Catalog>, checkout_url: &str) -> std::io::Result<()> {
+    let checkout_base: Arc<str> = Arc::from(checkout_url.trim_end_matches('/'));
+    let running = ReferenceStore::new(catalog, checkout_base)
+        .serve(rmcp::transport::stdio())
+        .await
+        .map_err(std::io::Error::other)?;
+    running.waiting().await.map_err(std::io::Error::other)?;
+    Ok(())
 }
 
 /// Serves `app` on `listener` until the future is dropped or the server fails.

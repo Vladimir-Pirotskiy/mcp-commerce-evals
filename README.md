@@ -20,7 +20,7 @@ checkout links go to a domain that does not exist.
 | Crate | Kind | Purpose |
 |---|---|---|
 | `mcp-commerce-evals` (`evals/`) | binary + library | Reads a queries file, scores a store's search tool, optionally lets a model shop and scores its answer. |
-| `reference-store` | binary + library | MCP server over Streamable HTTP with four shopping tools. |
+| `reference-store` | binary + library | MCP server over Streamable HTTP or stdio with four shopping tools. |
 | `catalog` | library | Seeded generator of the parts, and the search engine behind the store: BM25 with typo tolerance, synonyms and filters. |
 
 Rust 1.99.0 (pinned in `rust-toolchain.toml`), no unsafe code, no `unwrap()` outside tests. The
@@ -37,6 +37,14 @@ Connect an assistant that runs on your machine, for example Claude Code:
 
 ```sh
 claude mcp add --transport http shop http://127.0.0.1:8787/mcp
+```
+
+A client that starts its servers itself can run the store over stdio instead (`--stdio`, see
+[docs/store.md](docs/store.md#running-over-stdio)):
+
+```sh
+cargo build --release -p reference-store
+claude mcp add shop -- "$PWD/target/release/reference-store" --stdio
 ```
 
 Then ask it for "a chain for my 11-speed road bike, under $30" and watch it call

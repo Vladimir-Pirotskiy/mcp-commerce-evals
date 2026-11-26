@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `reference-store --stdio` serves one client over stdin and stdout, for clients that start their
+  servers as a child process. The HTTP options are refused in this mode; the store exits when
+  stdin closes. An integration test drives the binary over a real pipe.
+- `glama.json` names the maintainer of the listing on Glama.
+
 ### Security
 
 - url 2.5.8 to 2.5.9 (with form_urlencoded 1.2.3) for RUSTSEC-2026-0592, a stack overflow in
